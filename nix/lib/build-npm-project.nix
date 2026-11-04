@@ -104,6 +104,10 @@
   nativeBuildInputs ? [ python3 ],
   # Libraries native addons link against.
   buildInputs ? [ ],
+  # Self-contained browser asset directories, relative to each published
+  # package. Only selected directories become WebJars; dependency trees and
+  # arbitrary package roots are never treated as browser distributions.
+  webAssets ? { },
   # Checkouts that replace the fetches of git dependencies, by their
   # `resolved` in the lockfile: for a repository the sandbox cannot reach,
   # such as a private one, a checkout fetched with the user's credentials
@@ -447,7 +451,7 @@ let
   # depends on another one of them finds it.
   mkPackage =
     p:
-    stdenv.mkDerivation {
+    stdenv.mkDerivation (finalAttrs: {
       pname = builtins.replaceStrings [ "@" "/" ] [ "" "-" ] p.name;
       inherit (p) version;
       outputs = [
@@ -496,12 +500,22 @@ let
       '';
       passthru = {
         inherit (p) name dir;
-        projections = projectionFor [ p.name ];
+        projections =
+          projectionFor [ p.name ]
+          // lib.optionalAttrs (webAssets ? ${p.name}) (
+            lib.purifier.webjarProjections {
+              producer = finalAttrs.finalPackage;
+              assets = "${finalAttrs.finalPackage}/lib/node_modules/${p.name}/${webAssets.${p.name}}";
+              artifactId = builtins.replaceStrings [ "@" "/" ] [ "" "__" ] p.name;
+              inherit (p) version;
+              inherit runCommand python3;
+            }
+          );
       };
       meta = lib.optionalAttrs (p.bin != { }) {
         mainProgram = builtins.head (builtins.attrNames p.bin);
       };
-    };
+    });
   projectionFor =
     roots:
     lib.purifier.npmProjections {
@@ -515,8 +529,41 @@ let
         dependencies
         ;
     };
-  projections = projectionFor null;
+  packages = lib.mapAttrs (_: mkPackage) lock.outputs;
+  projections =
+    projectionFor null
+    // lib.optionalAttrs (webAssets != { }) (
+      lib.purifier.jvmProjections {
+        repository = null;
+        dependencies = lib.mapAttrsToList (name: _: packages.${name}) webAssets;
+        formats = [
+          "maven"
+          "ivy"
+        ];
+        inherit runCommand python3;
+      }
+    );
 in
+assert
+  builtins.all (name: builtins.hasAttr name lock.outputs) (builtins.attrNames webAssets)
+  || throw "npm-purifier: webAssets must name packages owned by this project";
+assert
+  builtins.all (
+    path:
+    builtins.isString path
+    && path != ""
+    && !lib.hasPrefix "/" path
+    && builtins.all (
+      part:
+      !builtins.elem part [
+        ""
+        "."
+        ".."
+        "node_modules"
+      ]
+    ) (lib.splitString "/" path)
+  ) (builtins.attrValues webAssets)
+  || throw "npm-purifier: webAssets must select relative built asset subdirectories, excluding node_modules";
 {
   inherit
     release
@@ -526,7 +573,7 @@ in
     ;
   fetches = lock.entries;
   cache = cache.tree;
-  packages = lib.mapAttrs (_: mkPackage) lock.outputs;
+  inherit packages;
   # What the `npm` wrapper builds for the project: the content of npm's
   # cache in `cache/`, and the shell commands that set up the environment
   # npm runs in, in `environment`. The Node.js of nixpkgs prepares git

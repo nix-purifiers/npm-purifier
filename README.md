@@ -408,6 +408,24 @@ A flake of your own can do the same with http-server as an input that has
 `flake = false`, passing the path of its own `npm-purifier.lock.json` as
 `lockFile`.
 
+## Browser assets for JVM applications
+
+`buildNpmProject { webAssets."@scope/package" = "dist"; ...; }` publishes
+the selected built directory as a WebJar. Each selected package exposes
+`projections.maven` and `projections.ivy`; the project's `projections` combines
+the selected WebJars. Existing npm projections remain available.
+
+The directory is relative to that package as packed by npm, so its `files`
+policy must include it. Select self-contained browser assets; this does not
+bundle dependencies or turn Node-only code into browser code. Package roots,
+parent traversal and `node_modules` cannot be selected. Only the selected
+subtree is published; sibling private files and installed dependencies are
+excluded. Scoped names map to Maven artifact IDs by dropping `@` and replacing
+`/` with `__`; the group is `org.webjars.npm`. Maven/Ivy versions include an
+immutable Nix identity; asset URLs retain the source package version. The
+integration check builds a scoped package and resolves its WebJar with
+ordinary offline Gradle.
+
 ## Credits
 
 The purifier idea was inspired by nixcloud's

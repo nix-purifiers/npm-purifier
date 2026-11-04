@@ -116,6 +116,7 @@ let
       throw "npm-purifier check ${name}: ${message}";
 in
 {
+  webjar = import ./webjar.nix { inherit pkgs buildNpmProject; };
   composition-producer = workspaces.packages.greet-cli;
   npm-projection =
     pkgs.runCommand "npm-projection-check"
