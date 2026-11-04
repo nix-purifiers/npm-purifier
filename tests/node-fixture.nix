@@ -3,6 +3,96 @@
 { pkgs, version }:
 let
   archives = {
+    "6.17.1" = {
+      x86_64-linux = {
+        arch = "x64";
+        sha256 = "0f88dacefc4be4709e0a9f9fe685efdfe1582a724d8f42614179c2f604c36165";
+      };
+      aarch64-linux = {
+        arch = "arm64";
+        sha256 = "9c7fdb4208fe0d63ac4280d0894a076d11873d49b79648c448f059443c666fbe";
+      };
+    };
+    "8.17.0" = {
+      x86_64-linux = {
+        arch = "x64";
+        sha256 = "b7f6dd77fb173c8c7c30d61d0702eefc236bba74398538aa77bfa2bb47bddce6";
+      };
+      aarch64-linux = {
+        arch = "arm64";
+        sha256 = "8318d1ee0265d84025ecbea76aaecd732974a6f4ac8492ddd84231cee77ba948";
+      };
+    };
+    "10.24.1" = {
+      x86_64-linux = {
+        arch = "x64";
+        sha256 = "a3b9b97c23bcdc64334be6b02422e9014f040d59dcf604563ffda48003419356";
+      };
+      aarch64-linux = {
+        arch = "arm64";
+        sha256 = "b11ce837867e50d1b2bf09da6a85336bedfa257bf92f34712aeb94360c0bcd6e";
+      };
+    };
+    "14.21.3" = {
+      x86_64-linux = {
+        arch = "x64";
+        sha256 = "05c08a107c50572ab39ce9e8663a2a2d696b5d262d5bd6f98d84b997ce932d9a";
+      };
+      aarch64-linux = {
+        arch = "arm64";
+        sha256 = "f06642bfcf0b8cc50231624629bec58b183954641b638e38ed6f94cd39e8a6ef";
+      };
+    };
+    "16.20.2" = {
+      x86_64-linux = {
+        arch = "x64";
+        sha256 = "874463523f26ed528634580247f403d200ba17a31adf2de98a7b124c6eb33d87";
+      };
+      aarch64-linux = {
+        arch = "arm64";
+        sha256 = "e88d86154d1ce53dc52fd74d79d4bfdf0b05f58c0bb2639adfa36e9378b770c4";
+      };
+    };
+    "18.20.8" = {
+      x86_64-linux = {
+        arch = "x64";
+        sha256 = "5467ee62d6af1411d46b6a10e3fb5cacc92734dbcef465fea14e7b90993001c9";
+      };
+      aarch64-linux = {
+        arch = "arm64";
+        sha256 = "224e569dbe7b0ea4628ce383d9d482494b57ee040566583f1c54072c86d1116b";
+      };
+    };
+    "20.19.0" = {
+      x86_64-linux = {
+        arch = "x64";
+        sha256 = "b4e336584d62abefad31baecff7af167268be9bb7dd11f1297112e6eed3ca0d5";
+      };
+      aarch64-linux = {
+        arch = "arm64";
+        sha256 = "dbe339e55eb393955a213e6b872066880bb9feceaa494f4d44c7aac205ec2ab9";
+      };
+    };
+    "22.14.0" = {
+      x86_64-linux = {
+        arch = "x64";
+        sha256 = "69b09dba5c8dcb05c4e4273a4340db1005abeafe3927efda2bc5b249e80437ec";
+      };
+      aarch64-linux = {
+        arch = "arm64";
+        sha256 = "08bfbf538bad0e8cbb0269f0173cca28d705874a67a22f60b57d99dc99e30050";
+      };
+    };
+    "26.0.0" = {
+      x86_64-linux = {
+        arch = "x64";
+        sha256 = "345d558514c62622b5c7d1f7b5f2a19c31ab1405d217df49f010c5ea8decc0f4";
+      };
+      aarch64-linux = {
+        arch = "arm64";
+        sha256 = "f0f94e55142149a4d34634dc3d7e103921d898512dd0cef995ecb62c5ebd3f29";
+      };
+    };
     "26.1.0-rc.0" = {
       x86_64-linux = {
         arch = "x64";

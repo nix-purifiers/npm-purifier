@@ -1,9 +1,13 @@
 # SPDX-License-Identifier: MIT
-{ pkgs, scope }:
+{
+  pkgs,
+  scope,
+  version ? "12.22.12",
+}:
 let
   nodejs = import ./node-fixture.nix {
     inherit pkgs;
-    version = "12.22.12";
+    inherit version;
   };
   command = scope.npm-purifier.override {
     inherit nodejs;
@@ -15,7 +19,7 @@ let
   };
 in
 pkgs.buildEnv {
-  name = "npm-legacy-tools";
+  name = "npm-node-${version}-tools";
   paths = [
     (pkgs.lib.lowPrio nodejs)
     npm
