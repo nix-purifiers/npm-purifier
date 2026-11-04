@@ -72,12 +72,8 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
-      - name: Selected EOL toolchain native workflow
-        run: |
-          system="$(nix eval --impure --raw --expr builtins.currentSystem)"
-          tools="$(nix build --no-link --print-out-paths ".#checks.$system.legacy-node-tools")"
-          release="$(nix build --no-link --print-out-paths ".#checks.$system.legacy-node.release")"
-          python3 tests/legacy-native.py "$tools" "$release/legacy-npm-app.tgz"
+      - name: Selected native npm workflows and ordinary registry consumers
+        run: python3 tests/node-lts-native.py
       - name: SDK context without import from derivation
         run: nix eval --impure --option allow-import-from-derivation false --json --expr 'import ./tests/sdk-context.nix {}'
       - name: SDK recipe survives ordinary store copy

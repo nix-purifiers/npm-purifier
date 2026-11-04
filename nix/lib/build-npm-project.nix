@@ -268,6 +268,10 @@ let
     ''}
     mkdir -p "$HOME" "$npm_config_cache/_cacache"
     cp -rs --no-preserve=mode ${cache.tree}/. "$npm_config_cache/_cacache"
+    # npm 6.13 uses the cache root; later npm uses its _cacache child.
+    for segment in content-v2 index-v5; do
+      ln -s "_cacache/$segment" "$npm_config_cache/$segment"
+    done
     ${cache.environment}
     ${lib.optionalString (installLock != null) ''
       cp --no-preserve=mode ${installLock} package-lock.json

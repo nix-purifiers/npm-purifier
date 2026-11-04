@@ -234,6 +234,9 @@ writeShellApplication {
         rm -rf "$state/npm"
         mkdir -p "$state/npm/_cacache"
         cp -rs --no-preserve=mode "$state/dependencies/cache/." "$state/npm/_cacache"
+        for segment in content-v2 index-v5; do
+          ln -sfn "_cacache/$segment" "$state/npm/$segment"
+        done
         # The stamp tells the `npm` wrapper which lockfiles this prefetch
         # was for.
         lockfiles=("$root/package-lock.json")

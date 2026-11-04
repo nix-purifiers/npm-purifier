@@ -514,3 +514,52 @@ in
     scope = withOverlay.npm-purifier;
   };
 }
+
+// lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux (
+  lib.concatMapAttrs
+    (major: point: {
+      "node-lts-${major}" = import ./legacy-node.nix {
+        inherit pkgs buildNpmProject;
+        inherit (point) version abi;
+      };
+      "node-lts-${major}-tools" = import ./legacy-tools.nix {
+        inherit pkgs;
+        scope = withOverlay.npm-purifier;
+        inherit (point) version;
+      };
+    })
+    {
+      "8" = {
+        version = "8.17.0";
+        abi = "57";
+      };
+      "10" = {
+        version = "10.24.1";
+        abi = "64";
+      };
+      "14" = {
+        version = "14.21.3";
+        abi = "83";
+      };
+      "16" = {
+        version = "16.20.2";
+        abi = "93";
+      };
+      "18" = {
+        version = "18.20.8";
+        abi = "108";
+      };
+      "20" = {
+        version = "20.19.0";
+        abi = "115";
+      };
+      "22" = {
+        version = "22.14.0";
+        abi = "127";
+      };
+      "26" = {
+        version = "26.0.0";
+        abi = "147";
+      };
+    }
+)

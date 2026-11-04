@@ -173,14 +173,23 @@ packages; historical packages can come from a pinned package set or a separate
 package derivation. The helper reads the installed graph and does not replace
 npm's resolver. Capture records the target Node version, ABI and platform.
 
-The `legacy-node` check builds a real npm 6 / Node 12.22.12 project from its
-unchanged lockfileVersion 1 lock, including two nested dependency versions,
-project scripts, production dependencies, native tarballs and an outgoing
-projection. `tests/legacy-native.py` also exercises lock, prefetch, offline
-`npm ci`, build and test with these tools. CI runs this on both Linux
-architectures. These are exact regression cases, not minimum or maximum
-accepted versions. Incoming Nix dependency bindings still use Arborist APIs;
-that feature needs a separate npm 6 adapter before claiming it for this tuple.
+Exact regression points include Node 8.17.0, 10.24.1, 12.22.12, 14.21.3,
+16.20.2, 18.20.8, 20.19.0, 22.14.0 and stable 26.0.0, each using its
+bundled native npm. The pure fixtures build from a v1 lock with nested dependency
+versions and check project scripts, production dependencies, native tarballs
+and outgoing projections. Native tests exercise lock/prefetch, offline `npm ci`,
+build/test, byte-equal publication and ordinary registry installation/execution
+of the prepared graph. Newer native npm may migrate an older lock during
+resolution; subsequent installation and publication must preserve that result.
+
+Older npm reads cache content at the cache root; later npm uses `_cacache`.
+Both consume the same locked content by integrity.
+The prepared cache accommodates both layouts. CI includes both Linux
+architectures; exact execution evidence belongs to each system. These points
+do not establish version intervals, addon compilation, or compatibility for
+Node 6/4 and their older bundled npm. Those earlier lock/cache epochs remain
+work to do. Incoming Nix dependency bindings use Arborist APIs and require
+separate historical adapters before claiming those workflows.
 
 ### One-off builds without a project Nix file
 
