@@ -1,0 +1,1 @@
+{"name":"@proof/browser","version":"1.0.0","private":false,"files":["dist"],"scripts":{"build":"node build.js"}}
