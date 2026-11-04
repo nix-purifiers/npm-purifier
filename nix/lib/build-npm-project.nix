@@ -82,7 +82,17 @@
   # npm's lockfile; the default is the one in the project. A packaging
   # flake can keep its own copy outside the repository, which the build
   # installs from in place of the one in `src`.
-  packageLock ? src + lib.optionalString (projectDir != "") "/${projectDir}" + "/package-lock.json",
+  packageLock ?
+    let
+      root = src + lib.optionalString (projectDir != "") "/${projectDir}";
+    in
+    root
+    + (
+      if builtins.pathExists (root + "/npm-shrinkwrap.json") then
+        "/npm-shrinkwrap.json"
+      else
+        "/package-lock.json"
+    ),
   # The Node.js that runs npm and the project's scripts, and that the
   # packages' commands run on. Git dependencies with a prepare script need
   # the Node.js of nixpkgs, whose npm prepares them inside the sandbox.
@@ -183,18 +193,27 @@ let
 
   # The package-lock.json npm installs from: the one in the project, a copy
   # given as `packageLock`, or that one completed.
+  nativeLockName =
+    if baseNameOf packageLock == "npm-shrinkwrap.json" then
+      "npm-shrinkwrap.json"
+    else
+      "package-lock.json";
   installLock =
     if completions != { } then
       completedPackageLock
     else if
-      packageLock != src + lib.optionalString (projectDir != "") "/${projectDir}" + "/package-lock.json"
+      packageLock != src + lib.optionalString (projectDir != "") "/${projectDir}" + "/${nativeLockName}"
     then
       packageLock
     else
       null;
 
   cache = callPackage ./cache.nix {
-    inherit fetchers gitCheckouts lock;
+    inherit
+      fetchers
+      gitCheckouts
+      lock
+      ;
     inherit (lib) purifier;
   };
 
@@ -254,6 +273,7 @@ let
     export HOME="$TMPDIR/home"
     export npm_config_cache="$TMPDIR/npm-cache"
     export npm_config_offline=true
+    export npm_config_fetch_retries=0
     export npm_config_audit=false
     export npm_config_fund=false
     export npm_config_update_notifier=false
@@ -269,12 +289,13 @@ let
     mkdir -p "$HOME" "$npm_config_cache/_cacache"
     cp -rs --no-preserve=mode ${cache.tree}/. "$npm_config_cache/_cacache"
     # npm 6.13 uses the cache root; later npm uses its _cacache child.
-    for segment in content-v2 index-v5; do
-      ln -s "_cacache/$segment" "$npm_config_cache/$segment"
+    for cached in "$npm_config_cache"/_cacache/*; do
+      [ -e "$cached" ] || continue
+      ln -s "_cacache/$(basename "$cached")" "$npm_config_cache/$(basename "$cached")"
     done
     ${cache.environment}
     ${lib.optionalString (installLock != null) ''
-      cp --no-preserve=mode ${installLock} package-lock.json
+      cp --no-preserve=mode ${installLock} ${nativeLockName}
     ''}
   '';
 
@@ -311,7 +332,14 @@ let
   # prepares git dependencies during the install only when scripts run.
   npmInstall = flags: ''
     export npm_config_script_shell=${scriptShell}
-    npm ci ${lib.escapeShellArgs flags}
+    npmMajor="$(npm --version | cut -d. -f1)"
+    if [ "$npmMajor" -lt 6 ]; then
+      ${python3}/bin/python ${./legacy-install.py} ${nativeLockName} \
+        ${writeText "npm-legacy-archive-bindings.json" cache.legacyBindings} \
+        npm install --cache-min=999999999 ${lib.escapeShellArgs flags}
+    else
+      npm ci ${lib.escapeShellArgs flags}
+    fi
   '';
 
   # Runs package script $1 at the root when the root defines it, and in
@@ -363,6 +391,12 @@ let
     installPhase = ''
       runHook preInstall
       mkdir -p "$out"
+      # npm 2/3 packs file mtimes verbatim and predates SOURCE_DATE_EPOCH.
+      # Normalize the copied build tree before asking native npm to pack it.
+      npmMajor="$(npm --version | cut -d. -f1)"
+      if [ "$npmMajor" -lt 6 ]; then
+        find "$srcRoot" -exec touch -h -d "@''${SOURCE_DATE_EPOCH:-1}" {} +
+      fi
       ${lib.concatMapStrings (p: ''
         (
           cd ${lib.escapeShellArg (if p.dir == "" then "." else "./${p.dir}")}
@@ -589,6 +623,7 @@ assert
         passAsFile = [ "environment" ];
         environment = ''
           export stdenv=${stdenv}
+          export NPM_PURIFIER_LEGACY_BINDINGS=${writeText "npm-legacy-archive-bindings.json" cache.legacyBindings}
           ${cache.environment}
         '';
       }

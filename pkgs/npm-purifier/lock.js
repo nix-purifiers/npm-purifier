@@ -353,7 +353,7 @@ const withHash = (text) => {
 };
 
 const main = (root, purifierLockPath) => {
-  const packageLockPath = path.join(root, "package-lock.json");
+  const packageLockPath = process.env.NPM_PURIFIER_PACKAGE_LOCK || path.join(root, "package-lock.json");
   // With an outside package-lock.json (NPM_PURIFIER_TOOL_LOCKFILE), the
   // command has put that file in the project for this run, and the run
   // writes it like a package-lock.json of the project.
@@ -362,9 +362,12 @@ const main = (root, purifierLockPath) => {
   // npm brings package-lock.json in step with package.json, resolving
   // against the registry; an up-to-date lockfile stays as it is.
   if (!external) {
-    execFileSync(npm, ["install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund"], {
-      cwd: root,
-      stdio: ["ignore", "inherit", "inherit"],
+    const npmMajor = Number(execFileSync(npm, ["--version"], {encoding: "utf8"}).split(".")[0]);
+    const commands = npmMajor < 5
+      ? [["install", "--ignore-scripts"], ["shrinkwrap", "--dev"]]
+      : [["install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund"]];
+    for (const command of commands) execFileSync(npm, command, {
+      cwd: root, stdio: ["ignore", "inherit", "inherit"],
     });
   }
   const packageLock = readJson(packageLockPath);
@@ -381,7 +384,7 @@ const main = (root, purifierLockPath) => {
     }
     const shown = completed.slice(0, 3).join(", ");
     const more = completed.length > 3 ? ` and ${completed.length - 3} more` : "";
-    const where = external ? purifierLockPath : "package-lock.json";
+    const where = external ? purifierLockPath : path.basename(packageLockPath);
     process.stderr.write(`npm-purifier: recorded the tarball URL and integrity of ${shown}${more} in ${where}\n`);
   }
   // Nix pins these archives. Retaining their native records would put
@@ -438,7 +441,7 @@ const main = (root, purifierLockPath) => {
     ? readJson(process.env.NPM_PURIFIER_INPUT_PINS) : [];
   if (Object.keys(git).length === 0 && Object.keys(completions).length === 0 && projectInputs.length === 0) {
     fs.rmSync(purifierLockPath, { force: true });
-    process.stderr.write("npm-purifier: package-lock.json records every download; no npm-purifier.lock.json needed\n");
+    process.stderr.write(`npm-purifier: ${path.basename(packageLockPath)} records every download; no npm-purifier.lock.json needed\n`);
     return;
   }
   const sorted = Object.fromEntries(Object.keys(git).sort().map((k) => [k, git[k]]));

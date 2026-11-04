@@ -61,7 +61,17 @@
   projectDir ? "",
   # npm's lockfile. An external build can keep its own copy outside the
   # repository, which then takes the place of the one in `src`.
-  packageLock ? src + lib.optionalString (projectDir != "") "/${projectDir}" + "/package-lock.json",
+  packageLock ?
+    let
+      root = src + lib.optionalString (projectDir != "") "/${projectDir}";
+    in
+    root
+    + (
+      if builtins.pathExists (root + "/npm-shrinkwrap.json") then
+        "/npm-shrinkwrap.json"
+      else
+        "/package-lock.json"
+    ),
   # npm-purifier.lock.json. It is read only when the project has git
   # dependencies or package-lock.json has incomplete entries. A flake that
   # packages a project without changing it keeps the file outside `src`.

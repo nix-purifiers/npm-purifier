@@ -19,6 +19,7 @@
   writeShellApplication,
   nodejs,
   coreutils,
+  python3,
   git,
   npm-purifier,
 }:
@@ -43,7 +44,7 @@ writeShellApplication {
     root=
     dir="$PWD"
     while [ "$dir" != / ]; do
-      if [ -f "$dir/package-lock.json" ]; then
+      if [ -f "$dir/package-lock.json" ] || [ -f "$dir/npm-shrinkwrap.json" ]; then
         root="$dir"
         break
       fi
@@ -73,15 +74,30 @@ writeShellApplication {
     state="$root/.npm-purifier"
     (cd "$root" && "$purifier" inputs "''${lockfileArgs[@]}")
 
+    # A bare old-npm install consumes the existing shrinkwrap offline.
+    # Explicit package arguments retain the native resolving/mutating path.
+    npmMajor="$($npm --version | cut -d. -f1)"
+    lockedInstall=false
+    if [ "$npmMajor" -lt 5 ] && [ "$command" = install ] && [ -f "$root/npm-shrinkwrap.json" ]; then
+      lockedInstall=true
+      first=true
+      for argument in "$@"; do
+        if [ "$first" = true ]; then first=false; continue; fi
+        case "$argument" in -*) ;; *) lockedInstall=false ;; esac
+      done
+    fi
+
     case "$command" in
       install | i | in | ins | inst | insta | instal | isnt | isnta | isntal | isntall | add | \
         update | up | upgrade | udpate | \
         uninstall | unlink | remove | rm | r | un)
-        # shellcheck disable=SC1091
-        source "$state/input-environment"
-        "$npm" "$@"
-        "$purifier" lock "''${lockfileArgs[@]}"
-        exit
+        if [ "$lockedInstall" = false ]; then
+          # shellcheck disable=SC1091
+          source "$state/input-environment"
+          "$npm" "$@"
+          "$purifier" lock "''${lockfileArgs[@]}"
+          exit
+        fi
         ;;
     esac
 
@@ -92,7 +108,9 @@ writeShellApplication {
     state="$root/.npm-purifier"
     lockfile="''${NPM_PURIFIER_LOCKFILE:-$root/npm-purifier.lock.json}"
     lockfile="$(realpath -m "$lockfile")"
-    lockfiles=("$root/package-lock.json")
+    nativeLock="$root/package-lock.json"
+    if [ -f "$root/npm-shrinkwrap.json" ]; then nativeLock="$root/npm-shrinkwrap.json"; fi
+    lockfiles=("$nativeLock")
     if [ -f "$lockfile" ]; then
       lockfiles+=("$lockfile")
     fi
@@ -116,7 +134,13 @@ writeShellApplication {
     log="$(mktemp)"
     trap 'rm -f "$log"' EXIT
     status=0
-    "$npm" "$@" 2> >(tee "$log" >&2) || status=$?
+    nativeCommand=("$npm")
+    npmMajor="$($npm --version | cut -d. -f1)"
+    if [ "$npmMajor" -lt 5 ] && [ "$command" = install ]; then
+      nativeCommand=(${python3}/bin/python ${../../nix/lib/legacy-install.py} \
+        "$nativeLock" "$NPM_PURIFIER_LEGACY_BINDINGS" "$npm")
+    fi
+    "''${nativeCommand[@]}" "$@" 2> >(tee "$log" >&2) || status=$?
     wait
     if [ "$status" -ne 0 ] && grep -q ENOTCACHED "$log"; then
       if [ "$(dirname "$lockfile")" = "$root" ]; then

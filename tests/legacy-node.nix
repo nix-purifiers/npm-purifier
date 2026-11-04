@@ -4,6 +4,7 @@
   buildNpmProject,
   version ? "12.22.12",
   abi ? "72",
+  src ? ./fixtures/legacy-node,
 }:
 let
   node = import ./node-fixture.nix {
@@ -11,7 +12,7 @@ let
     inherit version;
   };
   project = buildNpmProject {
-    src = ./fixtures/legacy-node;
+    inherit src;
     inherit node;
     doCheck = true;
     nativeBuildInputs = [ ];

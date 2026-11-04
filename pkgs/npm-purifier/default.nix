@@ -117,6 +117,11 @@ writeShellApplication {
       fi
       root="$(dirname "$root")"
     done
+    nativeLock="$root/package-lock.json"
+    npmMajor="$($npm --version | cut -d. -f1)"
+    if [ -f "$root/npm-shrinkwrap.json" ] || [ "$npmMajor" -lt 5 ]; then
+      nativeLock="$root/npm-shrinkwrap.json"
+    fi
     lockfile="''${lockfile:-$root/npm-purifier.lock.json}"
     state="$root/.npm-purifier"
 
@@ -140,7 +145,7 @@ writeShellApplication {
           in
           if path == \"\" then null else /. + path;
       })"
-    export NPM_PURIFIER_PACKAGE_LOCK="$root/package-lock.json"
+    export NPM_PURIFIER_PACKAGE_LOCK="$nativeLock"
     export NPM_PURIFIER_LOCKFILE="$lockfile"
     export NPM_PURIFIER_TOOL_LOCKFILE="$toolLockfile"
 
@@ -155,7 +160,7 @@ writeShellApplication {
         "$@"
         return
       fi
-      local tree="$root/package-lock.json" saved status=0
+      local tree="$nativeLock" saved status=0
       saved="$(mktemp)"
       if [ -f "$tree" ]; then
         cp "$tree" "$saved"
@@ -187,7 +192,7 @@ writeShellApplication {
       fi
     }
     checkLockfiles() {
-      checkJson "$root/package-lock.json" "run \`npm install\` to write it again"
+      checkJson "$nativeLock" "run \`npm install\` to write it again"
       checkJson "$toolLockfile" "run \`npm-purifier lock\` to write it again"
       checkJson "$lockfile" "run \`npm-purifier lock\` to write it again"
     }
@@ -221,7 +226,7 @@ writeShellApplication {
         withToolLockfile updateAndLock
         ;;
       prefetch)
-        if [ ! -f "$root/package-lock.json" ]; then
+        if [ ! -f "$nativeLock" ]; then
           echo "npm-purifier: $root has no package-lock.json; run \`npm-purifier lock\`" >&2
           exit 1
         fi
@@ -234,12 +239,13 @@ writeShellApplication {
         rm -rf "$state/npm"
         mkdir -p "$state/npm/_cacache"
         cp -rs --no-preserve=mode "$state/dependencies/cache/." "$state/npm/_cacache"
-        for segment in content-v2 index-v5; do
-          ln -sfn "_cacache/$segment" "$state/npm/$segment"
+        for cached in "$state/npm"/_cacache/*; do
+          [ -e "$cached" ] || continue
+          ln -sfn "_cacache/$(basename "$cached")" "$state/npm/$(basename "$cached")"
         done
         # The stamp tells the `npm` wrapper which lockfiles this prefetch
         # was for.
-        lockfiles=("$root/package-lock.json")
+        lockfiles=("$nativeLock")
         if [ -f "$lockfile" ]; then
           lockfiles+=("$lockfile")
         fi

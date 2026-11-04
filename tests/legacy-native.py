@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-"""Native npm 6 proof; takes the built checks.<system>.legacy-node-tools path."""
+"""Native selected-SDK proof; takes tools, release and optional outgoing repository paths."""
 import os
 from pathlib import Path
 import shutil
@@ -15,6 +15,8 @@ expected_archive = Path(sys.argv[2]).resolve()
 version = sys.argv[3] if len(sys.argv) > 3 else '12.22.12'
 prepared = Path(sys.argv[4]) if len(sys.argv) > 4 else None
 catalog = Path(sys.argv[5]) if len(sys.argv) > 5 else None
+fixture = sys.argv[6] if len(sys.argv) > 6 else 'legacy-node'
+lock_name = 'npm-shrinkwrap.json' if fixture.startswith('shrinkwrap-') else 'package-lock.json'
 env = dict(os.environ, PATH=str(tools / 'bin') + os.pathsep + os.environ['PATH'])
 
 
@@ -24,7 +26,7 @@ def run(*args, cwd):
 
 with tempfile.TemporaryDirectory(prefix='npm-legacy-native-') as temporary:
     root = Path(temporary) / 'project'
-    shutil.copytree(Path(__file__).parent / 'fixtures' / 'legacy-node', root)
+    shutil.copytree(Path(__file__).parent / 'fixtures' / fixture, root)
     env['HOME'] = str(Path(temporary) / 'home')
     Path(env['HOME']).mkdir()
     before = {p.name: p.read_bytes() for p in root.iterdir() if p.is_file()}
@@ -32,10 +34,13 @@ with tempfile.TemporaryDirectory(prefix='npm-legacy-native-') as temporary:
     npm_version = run('npm', '--version', cwd=root)
     run('npm-purifier', 'lock', cwd=root)
     assert (root / 'package.json').read_bytes() == before['package.json']
-    before['package-lock.json'] = (root / 'package-lock.json').read_bytes()
+    before[lock_name] = (root / lock_name).read_bytes()
     run('npm-purifier', 'prefetch', cwd=root)
     env['npm_config_registry'] = 'http://127.0.0.1:9'
-    run('npm', 'ci', cwd=root)
+    if int(npm_version.split('.')[0]) < 6:
+        run('npm', 'install', '--cache-min=999999999', cwd=root)
+    else:
+        run('npm', 'ci', cwd=root)
     run('npm', 'run', 'build', cwd=root)
     run('npm', 'test', cwd=root)
     assert run('node', 'cli.js', cwd=root) == '42 on v' + version
@@ -67,4 +72,22 @@ with tempfile.TemporaryDirectory(prefix='npm-legacy-native-') as temporary:
     assert uploads[0][0] == expected_archive.read_bytes(), 'native upload differs from the pure release'
     for name, contents in before.items():
         assert (root / name).read_bytes() == contents, f'publication changed {name}'
-    print('PASS npm' + npm_version + '/Node' + version + ' lock, prefetch, offline ci, build/test and actual publication; native lock preserved after resolution')
+    if fixture.startswith('shrinkwrap-'):
+        import json
+        failed = Path(temporary) / 'failed-script'
+        failed.mkdir()
+        manifest = json.loads((root / 'package.json').read_text())
+        manifest.setdefault('scripts', {})['preinstall'] = 'node -e "process.stderr.write(\"native-sdk-failure\");process.exit(23)"'
+        (failed / 'package.json').write_text(json.dumps(manifest))
+        (failed / lock_name).write_bytes(before[lock_name])
+        (failed / 'cli.js').write_bytes(before['cli.js'])
+        run('npm-purifier', 'prefetch', cwd=failed)
+        saved_lock = (failed / lock_name).read_bytes()
+        saved_mtime = (failed / lock_name).stat().st_mtime_ns
+        result = subprocess.run(['npm', 'install'], cwd=failed, env=env,
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        assert result.returncode != 0 and 'native-sdk-failure' in result.stdout, result.stdout
+        assert (failed / lock_name).read_bytes() == saved_lock
+        assert (failed / lock_name).stat().st_mtime_ns == saved_mtime
+        print('PASS failed native lifecycle restores original shrinkwrap bytes and mtime', flush=True)
+    print('PASS npm' + npm_version + '/Node' + version + ' lock, prefetch, offline install, build/test and actual publication; native lock preserved after resolution')
