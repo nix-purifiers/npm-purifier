@@ -563,3 +563,27 @@ in
       };
     }
 )
+// lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+  shrinkwrap-node-6 = import ./legacy-node.nix {
+    inherit pkgs buildNpmProject;
+    version = "6.17.1";
+    abi = "48";
+    src = ./fixtures/shrinkwrap-node-6;
+  };
+  shrinkwrap-node-4 = import ./legacy-node.nix {
+    inherit pkgs buildNpmProject;
+    version = "4.9.1";
+    abi = "46";
+    src = ./fixtures/shrinkwrap-node-4;
+  };
+  shrinkwrap-node-6-tools = import ./legacy-tools.nix {
+    inherit pkgs;
+    scope = withOverlay.npm-purifier;
+    version = "6.17.1";
+  };
+  shrinkwrap-node-4-tools = import ./legacy-tools.nix {
+    inherit pkgs;
+    scope = withOverlay.npm-purifier;
+    version = "4.9.1";
+  };
+}

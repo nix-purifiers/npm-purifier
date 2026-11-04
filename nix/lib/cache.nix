@@ -51,6 +51,14 @@ let
 in
 {
   inherit (git) environment needsGit repositories;
+  legacyBindings = builtins.toJSON (
+    lib.listToAttrs (
+      map (entry: {
+        name = entry.url;
+        value = toString (tarballs + "/${entry.path}");
+      }) (builtins.filter (entry: !(entry ? git)) entries)
+    )
+  );
   tree = symlinkJoin {
     name = "npm-purifier-cache";
     paths = [
