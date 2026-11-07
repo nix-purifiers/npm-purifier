@@ -37,6 +37,15 @@ jobs:
         run: nix flake check --all-systems --no-build
       - name: Messages of common mistakes
         run: tests/errors.sh
+      - name: Build and record named runtime derivations
+        run: python3 tests/runtime-receipt.py "$RUNNER_TEMP/npm-runtime-evidence"
+      - name: Upload runtime derivation evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: npm-runtime-${{ matrix.runner }}
+          path: ${{ runner.temp }}/npm-runtime-evidence
+          if-no-files-found: warn
 
   conformance:
     strategy:
