@@ -440,6 +440,44 @@ in
   # depends on them.
   real-commander = real.commander.packages.commander;
 
+  real-commander-native-offline =
+    pkgs.runCommand "commander-native-offline"
+      {
+        nativeBuildInputs = [ pkgs.nodejs ];
+      }
+      ''
+        export HOME="$TMPDIR/home"
+        mkdir -p "$HOME"
+        cp -R ${(import ./real-world.nix { buildNpmProject = x: x; }).commander.src} project
+        chmod -R u+w project
+        cd project
+        patchShebangs .
+        cp package-lock.json "$TMPDIR/original-lock.json"
+        cp package.json "$TMPDIR/original-manifest.json"
+        export npm_config_registry=http://127.0.0.1:9/
+        export npm_config_offline=true
+        export npm_config_audit=false
+        export npm_config_fund=false
+        export npm_config_cache="$TMPDIR/cold-cache"
+        if npm ci > "$TMPDIR/cold.log" 2>&1; then
+          echo "ordinary npm unexpectedly installed with an empty offline cache" >&2
+          exit 1
+        fi
+        grep ENOTCACHED "$TMPDIR/cold.log"
+        mkdir -p "$TMPDIR/prepared-cache/_cacache"
+        cp -rs --no-preserve=mode ${real.commander.interactive}/cache/. "$TMPDIR/prepared-cache/_cacache"
+        export npm_config_cache="$TMPDIR/prepared-cache"
+        npm ci
+        patchShebangs node_modules
+        npm test
+        cmp package-lock.json "$TMPDIR/original-lock.json"
+        cmp package.json "$TMPDIR/original-manifest.json"
+        mkdir -p "$out"
+        node --version > "$out/node-version"
+        npm --version > "$out/npm-version"
+        echo ${pkgs.stdenv.hostPlatform.system} > "$out/system"
+      '';
+
   # http-server builds from its completed lockfile, its tests pass, and its
   # command runs.
   real-http-server =
