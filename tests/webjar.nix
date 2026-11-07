@@ -22,6 +22,12 @@ pkgs.runCommand "npm-webjar-ordinary-consumers"
     mkdir -p "$HOME"
     ${pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
       python ${./darwin-loopback.py}
+      # Darwin's sandbox denies the JDK's IPv4-mapped IPv6 loopback path.
+      # Keep this adaptation within the ordinary WebJar consumer test.
+      export JAVA_TOOL_OPTIONS="''${JAVA_TOOL_OPTIONS:+$JAVA_TOOL_OPTIONS }-Djava.net.preferIPv4Stack=true"
+      ${pkgs.jdk}/bin/java -XshowSettings:properties -version > java-properties.log 2>&1
+      cat java-properties.log
+      grep -Eq '^[[:space:]]*java.net.preferIPv4Stack = true$' java-properties.log
     ''}
     python - <<'PY'
     import json, pathlib, zipfile
@@ -43,7 +49,9 @@ pkgs.runCommand "npm-webjar-ordinary-consumers"
     dependencies { assets file('coordinate').text }
     tasks.register('verify') {
       doLast {
-        def jar = new java.util.jar.JarFile(configurations.assets.singleFile)
+        ${pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
+          assert System.getProperty('java.net.preferIPv4Stack') == 'true'
+        ''}def jar = new java.util.jar.JarFile(configurations.assets.singleFile)
         def resource = jar.getJarEntry('META-INF/resources/webjars/proof__browser/1.0.0/proof.js')
         assert jar.getInputStream(resource).text.contains('42')
         jar.close()
