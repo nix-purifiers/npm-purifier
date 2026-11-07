@@ -16,6 +16,7 @@ points += [('node-lts-' + major, version) for major, version in [
 ]]
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--current', action='store_true', help='Run only the pinned default SDK.')
+parser.add_argument('--supported', action='store_true', help='Run the exact current upstream SDK and npm points.')
 parser.add_argument('--major', action='append', choices=[version.split('.')[0] for _, version in points],
                     help='Run selected exact regression points; omitted runs every point.')
 options = parser.parse_args()
@@ -23,7 +24,11 @@ selected = options.major
 current_version = subprocess.check_output(
     ['nix', 'eval', '--raw', '.#checks.' + system + '.current-node.nodeVersion'], text=True
 ).strip()
-if options.current:
+if options.supported:
+    points = [(name, subprocess.check_output(
+        ['nix', 'eval', '--raw', '.#checks.' + system + '.' + name + '.nodeVersion'], text=True
+    ).strip()) for name in ('supported-node-22', 'supported-node-24', 'supported-node-26', 'latest-npm')]
+elif options.current:
     points = [('current-node', current_version)]
 elif selected:
     points = [(name, version) for name, version in points if version.split('.')[0] in selected]

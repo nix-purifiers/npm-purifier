@@ -574,6 +574,10 @@ in
       touch $out
     '';
 }
+// import ./supported-toolchains.nix {
+  inherit pkgs buildNpmProject;
+  scope = withOverlay.npm-purifier;
+}
 // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
   legacy-node = import ./legacy-node.nix { inherit pkgs buildNpmProject; };
   legacy-node-tools = import ./legacy-tools.nix {

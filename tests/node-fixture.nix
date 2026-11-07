@@ -1,8 +1,50 @@
 # SPDX-License-Identifier: MIT
-# Pinned upstream binaries for historical compatibility fixtures only.
+# Pinned upstream binaries for exact historical and current compatibility points.
 { pkgs, version }:
 let
   archives = {
+    "22.23.4" = {
+      x86_64-linux = {
+        arch = "x64";
+        sha256 = "1805bcd35e6815559bd2eb97db438d3fdb0eb3a5e6a977b7c1badca76337e9ce";
+      };
+      aarch64-linux = {
+        arch = "arm64";
+        sha256 = "6287aa46b6c375d816e63ae66d024fbbfd70404825aabdfdf898a970871d2f4b";
+      };
+      aarch64-darwin = {
+        arch = "arm64";
+        sha256 = "037650d0839f457747396f052073fb48333d31bf5abd3c98b74da20d89ebb1ad";
+      };
+    };
+    "24.22.2" = {
+      x86_64-linux = {
+        arch = "x64";
+        sha256 = "48cc0e21e048790e54c0cf5749c2725005313d652651c40b7a21feb9697aaf75";
+      };
+      aarch64-linux = {
+        arch = "arm64";
+        sha256 = "eb187837a2230d4047161ac0be008584e16b46f726e9c9490ee35dc6b17d9ba8";
+      };
+      aarch64-darwin = {
+        arch = "arm64";
+        sha256 = "1f5ac075be50bed4780ea3be19a007fda95ea4d527d28d76d0b91de47d915115";
+      };
+    };
+    "26.13.0" = {
+      x86_64-linux = {
+        arch = "x64";
+        sha256 = "d28a96af6c38596f6d9d97c0ee531c13d238d757742387d1928de822d959e997";
+      };
+      aarch64-linux = {
+        arch = "arm64";
+        sha256 = "406fe3fbde1c054adff8b297c16fdb5af6659db327c1ac8acd46b56ef1af9a92";
+      };
+      aarch64-darwin = {
+        arch = "arm64";
+        sha256 = "6f5b3187d9df9fc007e881167905bc7d69ad26450ddc377c83d63256a2495b6e";
+      };
+    };
     "6.17.1" = {
       x86_64-linux = {
         arch = "x64";
@@ -136,10 +178,12 @@ pkgs.stdenvNoCC.mkDerivation {
   src = pkgs.fetchurl {
     url = "https://nodejs.org/${
       if pkgs.lib.hasInfix "-rc." version then "download/rc" else "dist"
-    }/v${version}/node-v${version}-linux-${archive.arch}.tar.xz";
+    }/v${version}/node-v${version}-${
+      if pkgs.stdenv.hostPlatform.isDarwin then "darwin" else "linux"
+    }-${archive.arch}.tar.xz";
     inherit (archive) sha256;
   };
-  nativeBuildInputs = [ pkgs.patchelf ];
+  nativeBuildInputs = pkgs.lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.patchelf;
   dontConfigure = true;
   dontBuild = true;
   dontStrip = true;
@@ -149,10 +193,12 @@ pkgs.stdenvNoCC.mkDerivation {
   installPhase = ''
     mkdir -p "$out"
     cp -r bin include lib share "$out/"
-    patchelf --no-sort \
-      --set-interpreter ${pkgs.stdenv.cc.bintools.dynamicLinker} \
-      --set-rpath ${pkgs.lib.makeLibraryPath [ pkgs.stdenv.cc.cc.lib ]} \
-      "$out/bin/node"
+    ${pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
+      patchelf --no-sort \
+        --set-interpreter ${pkgs.stdenv.cc.bintools.dynamicLinker} \
+        --set-rpath ${pkgs.lib.makeLibraryPath [ pkgs.stdenv.cc.cc.lib ]} \
+        "$out/bin/node"
+    ''}
     "$out/bin/node" --version
     export PATH="$out/bin:$PATH"
     patchShebangs "$out/lib/node_modules/npm"
