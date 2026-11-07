@@ -1,5 +1,6 @@
 """Exercise each selected Node point through native and ordinary registry workflows."""
 import json
+import argparse
 import pathlib
 import subprocess
 import sys
@@ -13,8 +14,23 @@ points += [('node-lts-' + major, version) for major, version in [
     ('16', '16.20.2'), ('18', '18.20.8'), ('20', '20.19.0'),
     ('22', '22.14.0'), ('26', '26.0.0'),
 ]]
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--current', action='store_true', help='Run only the pinned default SDK.')
+parser.add_argument('--major', action='append', choices=[version.split('.')[0] for _, version in points],
+                    help='Run selected exact regression points; omitted runs every point.')
+options = parser.parse_args()
+selected = options.major
+current_version = subprocess.check_output(
+    ['nix', 'eval', '--raw', '.#checks.' + system + '.current-node.nodeVersion'], text=True
+).strip()
+if options.current:
+    points = [('current-node', current_version)]
+elif selected:
+    points = [(name, version) for name, version in points if version.split('.')[0] in selected]
+else:
+    points.insert(0, ('current-node', current_version))
 for name, version in points:
-    print('Native registry workflow: Node ' + version, flush=True)
+    print('Native registry workflow: ' + system + ' Node ' + version, flush=True)
     def build(attribute):
         return pathlib.Path(subprocess.check_output(
             ['nix', 'build', '--no-link', '--print-out-paths',
