@@ -8,7 +8,18 @@ import subprocess
 import tempfile
 root = Path(__file__).resolve().parent.parent
 system = subprocess.check_output(['nix','eval','--impure','--raw','--expr','builtins.currentSystem'],text=True).strip()
-snapshot = json.loads(subprocess.check_output(['nix','flake','metadata','--json','--no-write-lock-file','path:'+str(root)],text=True))['path']
+source_ref = 'git+' + root.as_uri()
+archived = json.loads(subprocess.check_output(
+    ['nix','flake','archive','--json','--no-update-lock-file',source_ref],text=True))
+snapshot_path = Path(archived['path'])
+assert snapshot_path.is_dir() and snapshot_path.resolve(strict=True) == snapshot_path, archived
+snapshot = str(snapshot_path)
+print(json.dumps({
+    'sourceReference': source_ref,
+    'sourceRevision': subprocess.check_output(['git','-C',str(root),'rev-parse','HEAD'],text=True).strip(),
+    'snapshot': snapshot,
+    'sourceNarHash': subprocess.check_output(['nix','hash','path',snapshot],text=True).strip(),
+}), flush=True)
 with tempfile.TemporaryDirectory(prefix='npm-native-composition-') as temporary:
     temporary = Path(temporary)
     subprocess.run(['nix-store','--add-root',str(temporary/'source'),'--realise',snapshot],check=True)
