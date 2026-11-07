@@ -107,8 +107,8 @@ jobs:
         run: test "$(nix eval --impure --raw --expr builtins.currentSystem)" = aarch64-darwin
       - name: Default SDK native publication and ordinary registry consumption
         run: python3 tests/node-lts-native.py --current
-      - name: Current upstream SDK and npm native workflows
-        run: python3 tests/node-lts-native.py --supported
+      - name: Current npm CLI native workflow
+        run: python3 tests/node-lts-native.py --latest-npm
 
   legacy-native:
     strategy:
