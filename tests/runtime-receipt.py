@@ -32,6 +32,7 @@ receipt = {
     'checks': [],
 }
 names = ['real-commander', 'real-commander-native-offline', 'current-node']
+names += ['supported-node-22', 'supported-node-24', 'supported-node-26', 'latest-npm']
 if system.endswith('-linux'):
     names += ['node-lts-22', 'node-lts-26']
 try:
