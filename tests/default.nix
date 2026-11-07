@@ -150,6 +150,7 @@ in
   npm-projection =
     pkgs.runCommand "npm-projection-check"
       {
+        __darwinAllowLocalNetworking = pkgs.stdenv.hostPlatform.isDarwin;
         nativeBuildInputs = [
           pkgs.nodejs
           pkgs.python3
@@ -158,6 +159,9 @@ in
       ''
           export HOME="$TMPDIR/home"
           mkdir -p "$HOME"
+          ${lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
+            python ${./darwin-loopback.py}
+          ''}
           python ${./npm-projection.py} ${workspaces.projections.npm} \
             ${workspaces.projections.npm.catalog} ${pkgs.nodejs}/bin \
         ${../nix/lib/npm-bindings.cjs}

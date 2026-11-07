@@ -32,7 +32,7 @@ receipt = {
     'flakeLock': json.loads((root / 'flake.lock').read_text()),
     'checks': [],
 }
-names = ['real-commander', 'real-commander-native-offline', 'real-http-server', 'webjar', 'current-node']
+names = ['real-commander', 'real-commander-native-offline', 'real-http-server', 'webjar', 'npm-projection', 'current-node']
 names += ['supported-node-22', 'supported-node-24', 'supported-node-26', 'latest-npm']
 if system.endswith('-linux'):
     names += ['node-lts-22', 'node-lts-26']
@@ -41,16 +41,16 @@ try:
     assert receipt['sandbox'] == 'true', 'runtime derivation evidence requires the Nix sandbox'
     for name in names:
         attribute = '.#checks.' + system + '.' + name
-        result = json.loads(output('nix', 'build', '--no-link', '--json', attribute))[0]
+        result = json.loads(output('nix', 'build', '--no-link', '-L', '--json', attribute))[0]
         result['attribute'] = attribute
-        result['command'] = ['nix', 'build', '--no-link', '--json', attribute]
+        result['command'] = ['nix', 'build', '--no-link', '-L', '--json', attribute]
         # Preserve actual deriver and NAR metadata independently of build JSON.
         result['pathInfo'] = json.loads(output('nix', 'path-info', '--json',
                                                *result['outputs'].values()))
         result['outputHashes'] = {key: output('nix', 'hash', 'path', path)
                                   for key, path in result['outputs'].items()}
         result['derivation'] = json.loads(output('nix', 'derivation', 'show', result['drvPath']))
-        tools_attribute = ('.#toolchain' if name.startswith('real-') or name == 'webjar'
+        tools_attribute = ('.#toolchain' if name.startswith('real-') or name in ('webjar', 'npm-projection')
                            else '.#checks.' + system + '.' + name + '-tools')
         tools = Path(output('nix', 'build', '--no-link', '--print-out-paths', tools_attribute))
         native_env = dict(os.environ, NPM_PURIFIER='0')
@@ -58,6 +58,7 @@ try:
             'toolchainAttribute': tools_attribute,
             'toolchainPath': str(tools),
             'nodeExecutable': str((tools / 'bin/node').resolve()),
+            'nodeProcessExecPath': output(str(tools / 'bin/node'), '-p', 'process.execPath', env=native_env),
             'npmWrapper': str((tools / 'bin/npm').resolve()),
             'nodeVersion': output(str(tools / 'bin/node'), '--version', env=native_env),
             'npmVersion': output(str(tools / 'bin/npm'), '--version', env=native_env),
