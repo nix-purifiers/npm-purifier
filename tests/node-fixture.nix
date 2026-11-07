@@ -183,7 +183,9 @@ pkgs.stdenvNoCC.mkDerivation {
     }-${archive.arch}.tar.xz";
     inherit (archive) sha256;
   };
-  nativeBuildInputs = pkgs.lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.patchelf;
+  nativeBuildInputs =
+    pkgs.lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.patchelf
+    ++ pkgs.lib.optional pkgs.stdenv.hostPlatform.isDarwin pkgs.makeBinaryWrapper;
   dontConfigure = true;
   dontBuild = true;
   dontStrip = true;
@@ -199,7 +201,11 @@ pkgs.stdenvNoCC.mkDerivation {
         --set-rpath ${pkgs.lib.makeLibraryPath [ pkgs.stdenv.cc.cc.lib ]} \
         "$out/bin/node"
     ''}
-    "$out/bin/node" --version
+    ${pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
+      # Keep the upstream runtime while declaring its OpenSSL configuration.
+      # A compiled wrapper remains usable as npm's shebang interpreter on Darwin.
+      wrapProgram "$out/bin/node" --set-default OPENSSL_CONF ${pkgs.writeText "node-fixture-openssl.cnf" ""}
+    ''}"$out/bin/node" --version
     export PATH="$out/bin:$PATH"
     patchShebangs "$out/lib/node_modules/npm"
   '';
