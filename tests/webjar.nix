@@ -9,6 +9,8 @@ let
 in
 pkgs.runCommand "npm-webjar-ordinary-consumers"
   {
+    # Gradle's file-lock contention listener uses loopback UDP, even offline.
+    __darwinAllowLocalNetworking = true;
     nativeBuildInputs = [
       pkgs.python3
       pkgs.jdk
@@ -18,6 +20,9 @@ pkgs.runCommand "npm-webjar-ordinary-consumers"
   ''
     export HOME="$TMPDIR/home" GRADLE_USER_HOME="$TMPDIR/gradle"
     mkdir -p "$HOME"
+    ${pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
+      python ${./darwin-loopback.py}
+    ''}
     python - <<'PY'
     import json, pathlib, zipfile
     catalog = json.load(open('${view.catalog}'))
