@@ -39,6 +39,11 @@ let
   # whose native binary comes from a per-platform optional package.
   workspaces = buildNpmProject { src = ./fixtures/workspaces; };
 
+  current = buildNpmProject {
+    src = ./fixtures/legacy-node;
+    doCheck = true;
+  };
+
   # Every kind of git dependency: a GitHub archive, a GitHub archive npm
   # prepares, a Codeberg repository npm clones, and a cloned repository
   # with a submodule that npm prepares. The last one is a repository these
@@ -116,6 +121,30 @@ let
       throw "npm-purifier check ${name}: ${message}";
 in
 {
+  current-node =
+    pkgs.runCommand "npm-current-node"
+      {
+        passthru = {
+          nodeVersion = pkgs.nodejs.version;
+          inherit (current) release;
+          repository = current.packages.legacy-npm-app.projections.npm;
+        };
+        nativeBuildInputs = [ current.packages.legacy-npm-app ];
+      }
+      ''
+        test "$(legacy-npm-app)" = "42 on v${pkgs.nodejs.version}"
+        test ! -e ${current.packages.legacy-npm-app}/lib/node_modules/is-odd
+        test "$(tar -xOf ${current.release}/legacy-npm-app.tgz package/built.txt)" = v${pkgs.nodejs.version}
+        touch "$out"
+      '';
+  current-node-tools = pkgs.buildEnv {
+    name = "npm-current-node-tools";
+    paths = [
+      (lib.lowPrio pkgs.nodejs)
+      withOverlay.npm-purifier.npm
+      withOverlay.npm-purifier.npm-purifier
+    ];
+  };
   webjar = import ./webjar.nix { inherit pkgs buildNpmProject; };
   composition-producer = workspaces.packages.greet-cli;
   npm-projection =

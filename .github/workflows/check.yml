@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 #
-# Runs every check on x86_64-linux and aarch64-linux. The job `check` runs
+# Runs every check on x86_64-linux, aarch64-linux and aarch64-darwin. The job `check` runs
 # the flake's checks (the fixtures and real projects built in the Nix
 # sandbox, the unit tests of the lock run, the refused lockfiles of the
 # purifier contract, the publish step and the formatting), their
@@ -22,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
+        runner: [ubuntu-latest, ubuntu-24.04-arm, macos-15]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     steps:
@@ -30,6 +30,9 @@ jobs:
       - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
       - name: Flake checks
         run: nix flake check -L
+      - name: Verify native Darwin execution
+        if: runner.os == 'macOS'
+        run: test "$(nix eval --impure --raw --expr builtins.currentSystem)" = aarch64-darwin
       - name: Evaluation for every system
         run: nix flake check --all-systems --no-build
       - name: Messages of common mistakes
@@ -39,7 +42,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
+        runner: [ubuntu-latest, ubuntu-24.04-arm, macos-15]
         check: [conformance-relock, conformance-rebuild, conformance-offline, conformance-update]
     name: ${{ matrix.check }} (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
@@ -49,6 +52,9 @@ jobs:
       - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
       - name: ${{ matrix.check }}
         run: tests/${{ matrix.check }}.sh
+      - name: Verify native Darwin execution
+        if: runner.os == 'macOS'
+        run: test "$(nix eval --impure --raw --expr builtins.currentSystem)" = aarch64-darwin
 
   composition-native:
     strategy:
@@ -61,6 +67,24 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
       - run: python3 tests/composition-native.py
+
+  real-world-native:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm, macos-15]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+      - name: Pinned commander ordinary and purified native workflows
+        run: python3 tests/real-world-native.py
+      - name: Verify native Darwin execution
+        if: runner.os == 'macOS'
+        run: test "$(nix eval --impure --raw --expr builtins.currentSystem)" = aarch64-darwin
+      - name: Default SDK native publication and ordinary registry consumption
+        run: python3 tests/node-lts-native.py --current
 
   legacy-native:
     strategy:
