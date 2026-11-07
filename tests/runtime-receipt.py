@@ -22,7 +22,10 @@ def output(*args, **kwargs):
 system = output('nix', 'eval', '--impure', '--raw', '--expr', 'builtins.currentSystem')
 receipt = {
     'sourceRevision': output('git', 'rev-parse', 'HEAD'),
+    'sourceTree': output('git', 'rev-parse', 'HEAD^{tree}'),
+    'trackedSourceClean': subprocess.run(['git', 'diff', '--quiet', 'HEAD', '--'], cwd=root).returncode == 0,
     'system': system,
+    'sandbox': output('nix', 'config', 'show', 'sandbox'),
     'runnerOS': os.environ.get('RUNNER_OS'),
     'runnerArchitecture': os.environ.get('RUNNER_ARCH'),
     'flakeLock': json.loads((root / 'flake.lock').read_text()),
@@ -32,10 +35,13 @@ names = ['real-commander', 'real-commander-native-offline', 'current-node']
 if system.endswith('-linux'):
     names += ['node-lts-22', 'node-lts-26']
 try:
+    assert receipt['trackedSourceClean'], 'runtime derivation evidence requires committed source'
+    assert receipt['sandbox'] == 'true', 'runtime derivation evidence requires the Nix sandbox'
     for name in names:
         attribute = '.#checks.' + system + '.' + name
         result = json.loads(output('nix', 'build', '--no-link', '--json', attribute))[0]
         result['attribute'] = attribute
+        result['command'] = ['nix', 'build', '--no-link', '--json', attribute]
         # Preserve actual deriver and NAR metadata independently of build JSON.
         result['pathInfo'] = json.loads(output('nix', 'path-info', '--json',
                                                *result['outputs'].values()))
