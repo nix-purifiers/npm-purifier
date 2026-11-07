@@ -25,13 +25,14 @@ receipt = {
     'sourceTree': output('git', 'rev-parse', 'HEAD^{tree}'),
     'trackedSourceClean': subprocess.run(['git', 'diff', '--quiet', 'HEAD', '--'], cwd=root).returncode == 0,
     'system': system,
+    'nixVersion': output('nix', '--version'),
     'sandbox': output('nix', 'config', 'show', 'sandbox'),
     'runnerOS': os.environ.get('RUNNER_OS'),
     'runnerArchitecture': os.environ.get('RUNNER_ARCH'),
     'flakeLock': json.loads((root / 'flake.lock').read_text()),
     'checks': [],
 }
-names = ['real-commander', 'real-commander-native-offline', 'current-node']
+names = ['real-commander', 'real-commander-native-offline', 'real-http-server', 'webjar', 'current-node']
 names += ['supported-node-22', 'supported-node-24', 'supported-node-26', 'latest-npm']
 if system.endswith('-linux'):
     names += ['node-lts-22', 'node-lts-26']
@@ -49,7 +50,7 @@ try:
         result['outputHashes'] = {key: output('nix', 'hash', 'path', path)
                                   for key, path in result['outputs'].items()}
         result['derivation'] = json.loads(output('nix', 'derivation', 'show', result['drvPath']))
-        tools_attribute = ('.#toolchain' if name.startswith('real-')
+        tools_attribute = ('.#toolchain' if name.startswith('real-') or name == 'webjar'
                            else '.#checks.' + system + '.' + name + '-tools')
         tools = Path(output('nix', 'build', '--no-link', '--print-out-paths', tools_attribute))
         native_env = dict(os.environ, NPM_PURIFIER='0')

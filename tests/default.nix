@@ -483,9 +483,13 @@ in
   real-http-server =
     pkgs.runCommand "real-http-server-check"
       {
+        __darwinAllowLocalNetworking = true;
         nativeBuildInputs = [ real.httpServer.packages.http-server ];
       }
       ''
+        ${lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
+          ${pkgs.python3}/bin/python ${./darwin-loopback.py}
+        ''}
         http-server --version | grep -qx v14.1.2
         touch $out
       '';

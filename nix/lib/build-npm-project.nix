@@ -426,6 +426,9 @@ let
   # whose tarballs keep the files as the project has them.
   tests = stdenv.mkDerivation {
     name = "npm-project-tests";
+    # Test suites such as http-server exercise local HTTP listeners. Darwin
+    # needs this explicit loopback permission; external outbound connections stay denied.
+    __darwinAllowLocalNetworking = true;
     src = filteredSrc;
     nativeBuildInputs = inputs;
     inherit buildInputs;
