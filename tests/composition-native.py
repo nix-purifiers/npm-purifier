@@ -74,7 +74,7 @@ with tempfile.TemporaryDirectory(prefix='npm-native-composition-') as temporary:
     (external/'package-lock.json').write_text(json.dumps(native_lock))
     external_before=(external/'package-lock.json').read_bytes()
     external_expression='''let
-      f=builtins.getFlake ("path:"+builtins.getEnv "NPM_COMPOSITION_FLAKE");
+      f=builtins.getFlake (builtins.getEnv "NPM_COMPOSITION_FLAKE");
       p=import f.inputs.nixpkgs {overlays=[f.overlays.default];};
       project=p.npm-purifier.buildNpmProject {
         src=/. + builtins.getEnv "NPM_EXTERNAL_PROJECT";
