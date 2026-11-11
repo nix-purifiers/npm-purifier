@@ -117,6 +117,11 @@ def main():
         assert native.read_bytes() == original_native
         origin = json.loads(execute([current_native / "bin/npm", "run", "--silent", "pin-origin"], project, environment).stdout)
         assert bootstrap.same_source(origin["source"], source_b)
+        execute([current_native / "bin/npm", "ci"], project, environment)
+        execute([current_native / "bin/npm", "run", "build"], project, environment)
+        execute([current_native / "bin/npm", "test"], project, environment)
+        matched_b = execute(["nix", "build", "--impure", "--no-link", "--print-out-paths", "--expr", project_expression(source_b)], project, environment).stdout.strip()
+        matched_b_derivation = execute(["nix-store", "--query", "--deriver", matched_b], project, environment).stdout.strip()
         execute([current_cli / "bin/npm-purifier", "self-update", "--to", bootstrap.source_ref(source_a)], project, environment)
         assert lock.read_bytes() == original_lock and native.read_bytes() == original_native
         external = work / "external.lock.json"
@@ -155,6 +160,7 @@ def main():
                    "currentPackages": list(map(str, (current_cli, current_native))), "baselineCli": str(old_cli),
                    "bootstrapSha256": hashlib.sha256(Path(args.bootstrap).read_bytes()).hexdigest(),
                    "matchedBuild": matched_path, "matchedDerivation": matched_derivation,
+                   "updatedBuild": matched_b, "updatedDerivation": matched_b_derivation,
                    "nativeCiBuildTest": True, "actualWrapperOrigin": True, "dependencyUpdatePreservesPin": True,
                    "explicitPurifierUpdate": True, "nativeLockUnchanged": True, "restoredLockBytes": True,
                    "mismatchedBuilderRejected": True, "externalLock": True,
