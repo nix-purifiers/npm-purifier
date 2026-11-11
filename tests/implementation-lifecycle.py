@@ -65,7 +65,7 @@ def main():
             if not path.is_symlink():
                 path.chmod(path.stat().st_mode | (0o700 if path.is_dir() else 0o200))
         package = json.loads((project / "package.json").read_text())
-        package["scripts"]["pin-origin"] = "node -e 'console.log(require(\"fs\").readFileSync(process.env.NPM_PURIFIER_IMPLEMENTATION_CONFIG,\"utf8\"))'"
+        package["scripts"]["pin-origin"] = "node -e 'var fs=require(\"fs\"); var value=JSON.parse(fs.readFileSync(process.env.NPM_PURIFIER_IMPLEMENTATION_CONFIG,\"utf8\")); value.runtime={node:process.version,executable:fs.realpathSync(process.execPath)}; console.log(JSON.stringify(value))'"
         (project / "package.json").write_text(json.dumps(package, indent=2) + "\n")
         lock = project / "npm-purifier.lock.json"
         pin_a = {"version": 1, "tool": "npm-purifier", "source": source_a}
@@ -85,6 +85,7 @@ def main():
         execute([current_native / "bin/npm", "test"], project, environment)
         origin = json.loads(execute([current_native / "bin/npm", "run", "--silent", "pin-origin"], project, environment).stdout)
         assert bootstrap.same_source(origin["source"], source_a)
+        runtimes = {"A": {"node": origin["runtime"], "npm": execute([current_native / "bin/npm", "--version"], project, environment).stdout.strip()}}
         selected = json.loads(execute([current_cli / "bin/npm-purifier", "implementation"], project, environment).stdout)
         assert bootstrap.same_source(selected["source"], source_a)
         # Ordinary dependency update must retain the implementation verbatim.
@@ -117,6 +118,7 @@ def main():
         assert native.read_bytes() == original_native
         origin = json.loads(execute([current_native / "bin/npm", "run", "--silent", "pin-origin"], project, environment).stdout)
         assert bootstrap.same_source(origin["source"], source_b)
+        runtimes["B"] = {"node": origin["runtime"], "npm": execute([current_native / "bin/npm", "--version"], project, environment).stdout.strip()}
         execute([current_native / "bin/npm", "ci"], project, environment)
         execute([current_native / "bin/npm", "run", "build"], project, environment)
         execute([current_native / "bin/npm", "test"], project, environment)
@@ -156,12 +158,14 @@ def main():
         rejected = execute([current_cli / "bin/npm-purifier", "lock"], nested, environment, success=False)
         assert rejected.returncode and "parent project" in rejected.stderr
         assert not (nested / "package-lock.json").exists() and lock.read_bytes() == original_lock
-        receipt = {"baseline": source_a, "installed": source_b, "system": config["system"],
+        receipt = {"baseline": source_a, "installed": source_b, "system": config["system"], "observedRuntimes": runtimes,
                    "transport": "local-git" if args.local_source else "public-github",
                    "currentPackages": list(map(str, (current_cli, current_native))), "baselineCli": str(old_cli),
                    "bootstrapSha256": hashlib.sha256(Path(args.bootstrap).read_bytes()).hexdigest(),
                    "matchedBuild": matched_path, "matchedDerivation": matched_derivation,
+                   "matchedOutputInfo": json.loads(execute(["nix", "path-info", "--json", matched_path]).stdout),
                    "updatedBuild": matched_b, "updatedDerivation": matched_b_derivation,
+                   "updatedOutputInfo": json.loads(execute(["nix", "path-info", "--json", matched_b]).stdout),
                    "nativeCiBuildTest": True, "actualWrapperOrigin": True, "dependencyUpdatePreservesPin": True,
                    "explicitPurifierUpdate": True, "nativeLockUnchanged": True, "restoredLockBytes": True,
                    "mismatchedBuilderRejected": True, "externalLock": True, "coldExternalNativeLock": True,
