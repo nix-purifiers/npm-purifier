@@ -37,7 +37,41 @@
         libOverlays = lib: lib.caisson.mkLibOverlays ./lib-overlays;
         pkgOverlays = lib: lib.caisson.mkPkgOverlays ./pkg-overlays;
       };
+      base = lib.caisson.flake-parts.mkTopConfiguration { };
     in
-    lib.caisson.flake-parts.mkTopConfiguration { };
+    base
+    // {
+      lib = base.lib // {
+        npm-purifier = base.lib.npm-purifier // {
+          # Only this immutable source interprets these typed SDK recipes.
+          implementationPackage =
+            {
+              system,
+              entry,
+              configuration,
+            }:
+            let
+              pkgs = import inputs.nixpkgs {
+                inherit system;
+                overlays = [ base.overlays.default ];
+              };
+              node = import ./nix/lib/sdk-from-configuration.nix { inherit pkgs configuration; };
+              command = pkgs.npm-purifier.npm-purifier.override {
+                nodejs = node;
+                hostNode = pkgs.nodejs;
+              };
+            in
+            if entry == "npm-purifier" then
+              command
+            else if entry == "npm" then
+              pkgs.npm-purifier.npm.override {
+                nodejs = node;
+                npm-purifier = command;
+              }
+            else
+              throw "npm-purifier: unknown configured implementation entrypoint";
+        };
+      };
+    };
 
 }

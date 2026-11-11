@@ -38,6 +38,17 @@ test("dependency relocking preserves implementation and explicit legacy migratio
   assert.throws(() => implementationPin(null, { source: null }), /portable source identity/);
 });
 
+test("new pins retain SDK recipe and dependency relocking preserves it", () => {
+  const configuration = { version: 1, node: { type: "upstream-node", version: "8.17.0" } };
+  const installed = { source: { rev: "A" }, configuration };
+  const pin = implementationPin(null, installed);
+  assert.deepEqual(pin.configuration, configuration);
+  assert.deepEqual(implementationPin({ implementation: pin }, { source: { rev: "B" } }), pin);
+  assert.deepEqual(implementationPin(null, { source: { rev: "A" }, configuration: null }), {
+    version: 1, tool: "npm-purifier", source: { rev: "A" },
+  });
+});
+
 test("legacy nested locks retain their format and scoped paths when completed", () => {
   const lock = {lockfileVersion: 1, dependencies: {
     a: {version: "1.0.0", resolved: "https://r/a.tgz", integrity: "sha512-a", dependencies: {

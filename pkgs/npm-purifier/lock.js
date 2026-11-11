@@ -467,7 +467,8 @@ const implementationPin = (previous, config) => {
   if (previous) return previous.implementation;
   if (!config) return undefined;
   if (!config.source) throw new Error("this purifier has no portable source identity; lock with a committed, published purifier revision");
-  return { version: 1, tool: "npm-purifier", source: config.source };
+  return { version: 1, tool: "npm-purifier", source: config.source,
+    ...(config.configuration != null ? { configuration: config.configuration } : {}) };
 };
 
 module.exports = {

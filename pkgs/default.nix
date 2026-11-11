@@ -6,6 +6,7 @@
   ...
 }:
 let
+  pkgs = callPackage ({ pkgs }: pkgs) { };
   implementation = callPackage lib.purifier.implementation {
     source = implementationSource;
     repository = "nix-purifiers/npm-purifier";
@@ -14,23 +15,31 @@ let
     checksum = "npm";
     lockVersions = [ 3 ];
   };
-  npm-purifier = implementation.wrap (
-    callPackage ./npm-purifier {
-      inherit (lib) purifier;
-      inherit implementation;
-    }
-  );
+  implementationForSdk =
+    node:
+    let
+      selected = builtins.tryEval (import ../nix/lib/sdk-configuration.nix { inherit pkgs node; });
+    in
+    if selected.success then
+      implementation.withConfiguration selected.value
+    else
+      implementation.withoutIdentity;
+  npm-purifier = callPackage ./npm-purifier {
+    inherit (lib) purifier;
+    inherit implementationForSdk;
+  };
+
 in
 {
   # The builder of npm projects (nix/lib/build-npm-project.nix), a package
   # for callPackage in this scope. It reads lockfiles with the library of
   # this flake.
   buildNpmProject = callPackage (import ../nix/lib/build-npm-project.nix { inherit lib; }) {
-    inherit implementation;
+    inherit implementation implementationForSdk;
   };
   # The command `npm-purifier`: lock, update, prefetch and publish.
   inherit npm-purifier;
   # npm that runs offline on what `npm-purifier prefetch` keeps, in a
   # project with a package-lock.json.
-  npm = implementation.wrap (callPackage ./npm { inherit npm-purifier implementation; });
+  npm = callPackage ./npm { inherit npm-purifier implementationForSdk; };
 }

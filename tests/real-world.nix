@@ -38,6 +38,11 @@
     doCheck = true;
     # Two of the test files listen on port 8000; tap runs them one after
     # the other with one job.
-    checkFlags = [ "--jobs=1" ];
+    # Keep native TAP diagnostics instead of the interactive reporter's
+    # repeated screen redraws and large HTTP response bodies.
+    checkFlags = [
+      "--jobs=1"
+      "--reporter=tap"
+    ];
   };
 }

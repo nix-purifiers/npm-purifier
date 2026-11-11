@@ -57,8 +57,10 @@
   python3,
   nix,
   implementation ? null,
+  implementationForSdk ? null,
+  pkgs,
 }:
-{
+args@{
   # The source tree. It holds the project and every local directory the
   # project depends on.
   src,
@@ -97,7 +99,7 @@
   # The Node.js that runs npm and the project's scripts, and that the
   # packages' commands run on. Git dependencies with a prepare script need
   # the Node.js of nixpkgs, whose npm prepares them inside the sandbox.
-  node ? nodejs,
+  node ? null,
   # Host graph tooling, independent of the selected project runtime.
   captureNode ? nodejs,
   # The package scripts that build the project, run in order before the
@@ -133,6 +135,34 @@
   srcFilter ? null,
 }:
 let
+  node =
+    if (args.node or null) != null then
+      args.node
+    else if (lock.implementation.configuration or null) != null then
+      import ./sdk-from-configuration.nix {
+        inherit pkgs;
+        configuration = lock.implementation.configuration;
+      }
+    else
+      nodejs;
+  configuredSdk = lock.implementation.configuration or null;
+  # Embedded SDK references retain their exact output/recipe context, not
+  # arbitrary passthru metadata such as version. Compare the actual output to
+  # the source-owned recipe rather than reclassifying it from a version label.
+  builderImplementation =
+    if configuredSdk == null then
+      implementationForSdk node
+    else
+      let
+        expected = import ./sdk-from-configuration.nix {
+          inherit pkgs;
+          configuration = configuredSdk;
+        };
+      in
+      if builtins.toString node == builtins.toString expected then
+        implementation.withConfiguration configuredSdk
+      else
+        implementation.withoutIdentity;
   inputSelection = lib.purifier.npmInputSelection { inherit dependencies; };
   selectedInputs = inputSelection.inputs;
   inputViews = writeText "npm-input-views.json" (builtins.toJSON inputSelection.views);
@@ -589,10 +619,10 @@ in
 assert
   (lock.implementation or null) == null
   || (
-    if implementation == null then
+    if implementation == null || implementationForSdk == null then
       throw "npm-purifier: a pinned project requires the implementation-aware overlay"
     else
-      implementation.check lock.implementation true
+      builderImplementation.check lock.implementation true
   );
 assert
   builtins.all (name: builtins.hasAttr name lock.outputs) (builtins.attrNames webAssets)

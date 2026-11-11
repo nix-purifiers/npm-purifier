@@ -84,7 +84,12 @@ Or select a published revision with `--to github:nix-purifiers/npm-purifier/REV`
 The selected implementation relocks a staged copy before replacing the lock;
 this operation preserves npm's dependency lock. `npm-purifier implementation`
 prints the selected identity. Existing locks without a pin warn until explicitly
-migrated with `self-update`. Use a wrapper that supports implementation pins;
+migrated with `self-update`.
+
+Exact SDK variants shipped by this source are recorded with the pin and replayed
+by the pinned source. An arbitrary patched SDK can still run unlocked or with a
+legacy lock, but cannot create a portable pin without a reproducible SDK recipe.
+Use a wrapper that supports implementation pins;
 older wrappers cannot enforce them. Projects need no flake.
 
 ## Dependencies from another purified project
