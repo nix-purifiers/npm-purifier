@@ -1,9 +1,9 @@
 {
   "source": {
-    "narHash": "sha256-KffM8OGLV7iiBzgrXRYIxEzmieMdX0543TFGkkWDuRc=",
+    "narHash": "sha256-SCWFDUykXLef4NAywOITep/vL29AwHjTzLShkoromM0=",
     "owner": "nix-purifiers",
     "repo": "npm-purifier",
-    "rev": "f475d99fffdb151f7096684c880e67e1ecd56fd4",
+    "rev": "98fd494fce1a1253ce196cabca06d0f7ebe3c483",
     "type": "github"
   }
 }
