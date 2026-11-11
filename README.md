@@ -23,16 +23,16 @@ test and editor commands with this setup. Nix provides the locked
 dependencies; the development commands above run outside the Nix sandbox.
 No project Nix files are needed for this workflow.
 
-Sandboxed builds of the whole project are an optional
+Sandboxed builds are an optional
 [next step](#building-the-project-with-nix).
 
 The shell provides the `npm` wrapper. Use it for the locked
 development workflow. The native lockfile can supply the complete
-download record; a separate purifier lock is needed for the cases described
-below. With no usable lockfile, the wrapper warns on standard error and
+download record; the purifier lock records the implementation and any extra
+download information npm cannot represent. With no usable lockfile, the wrapper warns on standard error and
 runs the ordinary tool with impure resolution.
 
-For persistent use, add these packages through your usual Nix configuration.
+Install these packages through your usual Nix configuration.
 
 
 ## Development loop
@@ -70,6 +70,30 @@ Nix and runs `npm publish` on that tarball. Further arguments go to
 `npm publish`, so `npm-purifier publish --dry-run` shows what would be
 uploaded. Nothing is packed outside the sandbox.
 
+### Updating npm-purifier
+
+New project locks pin npm-purifier's source revision and hash. Updating the
+installed wrapper or running `npm-purifier update` preserves that pin.
+To select your installed version explicitly:
+
+```sh
+npm-purifier self-update --to installed
+```
+
+Or select a published revision with `--to github:nix-purifiers/npm-purifier/REV`.
+The selected implementation relocks a staged copy before replacing the lock;
+this operation preserves npm's dependency lock. `npm-purifier implementation`
+prints the selected identity. Existing locks without a pin warn until explicitly
+migrated with `self-update`.
+
+Exact SDK variants shipped by this source are recorded with the pin and replayed
+by the pinned source. An arbitrary patched SDK can still run unlocked or with a
+legacy lock, but cannot create a portable pin without a reproducible SDK recipe.
+The same applies when an overlay uses a different Nixpkgs or modified host tools;
+use the purifier source's exported packages to create a portable pin.
+Use a wrapper that supports implementation pins;
+older wrappers cannot enforce them. Projects need no flake.
+
 ## Dependencies from another purified project
 
 Supply a Nix-built package that exports an npm repository:
@@ -96,7 +120,7 @@ you specify another tag.
 ## Building the project with Nix
 
 Once the native development workflow is working, you can also build and
-test the whole project in the Nix sandbox. For this step, keep a flake or
+test the project in the Nix sandbox. For this step, keep a flake or
 another Nix build definition in the project's repository, or maintain an
 external packaging repository that points at its sources and lockfiles.
 The builder consumes the same lockfiles as the development workflow.
@@ -123,9 +147,14 @@ another one:
     { nixpkgs, npm-purifier, ... }:
     let
       system = "x86_64-linux";
+      pin = (builtins.fromJSON
+        (builtins.readFile ./npm-purifier.lock.json)).implementation;
+      selected =
+        (npm-purifier.lib.purifier.implementationSource.resolve
+          pin.source).flake;
       pkgs = import nixpkgs {
         inherit system;
-        overlays = [ npm-purifier.overlays.default ];
+        overlays = [ selected.overlays.default ];
       };
       project = pkgs.npm-purifier.buildNpmProject {
         src = ./.;
@@ -212,7 +241,12 @@ project root. Replace the example package name with one from your project:
 
 ```zsh
 nix build --impure --expr 'let
-  purifier = builtins.getFlake "github:nix-purifiers/npm-purifier";
+  bootstrap = builtins.getFlake "github:nix-purifiers/npm-purifier";
+  pin = (builtins.fromJSON
+    (builtins.readFile ./npm-purifier.lock.json)).implementation;
+  purifier =
+    (bootstrap.lib.purifier.implementationSource.resolve
+      pin.source).flake;
   pkgs = import purifier.inputs.nixpkgs {
     system = builtins.currentSystem;
     overlays = [ purifier.overlays.default ];
@@ -376,13 +410,18 @@ npm ci
 npm test
 ```
 
-commander.js has no git dependencies, so the lock run writes no
-`npm-purifier.lock.json`. From the same directory, this builds the package
+The native lock records commander.js dependencies; `npm-purifier.lock.json`
+also pins the purifier implementation. From the same directory, this builds the package
 and runs its tests in the sandbox, with no Nix file added to the checkout:
 
 ```zsh
 nix build --impure --expr 'let
-  purifier = builtins.getFlake "github:nix-purifiers/npm-purifier";
+  bootstrap = builtins.getFlake "github:nix-purifiers/npm-purifier";
+  pin = (builtins.fromJSON
+    (builtins.readFile ./npm-purifier.lock.json)).implementation;
+  purifier =
+    (bootstrap.lib.purifier.implementationSource.resolve
+      pin.source).flake;
   pkgs = import purifier.inputs.nixpkgs {
     system = builtins.currentSystem;
     overlays = [ purifier.overlays.default ];
@@ -415,7 +454,12 @@ the server with that lockfile:
 
 ```zsh
 nix build --impure --expr 'let
-  purifier = builtins.getFlake "github:nix-purifiers/npm-purifier";
+  bootstrap = builtins.getFlake "github:nix-purifiers/npm-purifier";
+  pin = (builtins.fromJSON
+    (builtins.readFile ../http-server.lock.json)).implementation;
+  purifier =
+    (bootstrap.lib.purifier.implementationSource.resolve
+      pin.source).flake;
   pkgs = import purifier.inputs.nixpkgs {
     system = builtins.currentSystem;
     overlays = [ purifier.overlays.default ];
@@ -430,6 +474,11 @@ in
 A flake of your own can do the same with http-server as an input that has
 `flake = false`, passing the path of its own `npm-purifier.lock.json` as
 `lockFile`.
+
+The pinned CI http-server sample carries an explicit
+[timeout-unit fix](tests/real-world/http-server/timeouts.patch). The same patch
+applies to its tests and packaged application; all upstream assertions remain,
+with additional checks for the API's milliseconds and the CLI's seconds.
 
 ## Browser assets for JVM applications
 

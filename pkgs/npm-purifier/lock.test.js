@@ -22,9 +22,32 @@ const {
   incompleteEntries,
   completeLock,
   withHash,
+  implementationPin,
 } = require("./lock.js");
 
 const sha = "98e8ff1da1a89f93d1397a24d7413ed15421c139";
+
+test("dependency relocking preserves implementation and explicit legacy migration", () => {
+  const old = { version: 1, tool: "npm-purifier", source: { rev: "old" } };
+  const installed = { source: { rev: "new" } };
+  assert.deepEqual(implementationPin({ implementation: old }, installed), old);
+  assert.equal(implementationPin({ version: 3 }, installed), undefined);
+  assert.deepEqual(implementationPin(null, installed), {
+    version: 1, tool: "npm-purifier", source: installed.source,
+  });
+  assert.throws(() => implementationPin(null, { source: null }), /portable source identity/);
+});
+
+test("new pins retain SDK recipe and dependency relocking preserves it", () => {
+  const configuration = { version: 1, node: { type: "upstream-node", version: "8.17.0" } };
+  const installed = { source: { rev: "A" }, configuration };
+  const pin = implementationPin(null, installed);
+  assert.deepEqual(pin.configuration, configuration);
+  assert.deepEqual(implementationPin({ implementation: pin }, { source: { rev: "B" } }), pin);
+  assert.deepEqual(implementationPin(null, { source: { rev: "A" }, configuration: null }), {
+    version: 1, tool: "npm-purifier", source: { rev: "A" },
+  });
+});
 
 test("legacy nested locks retain their format and scoped paths when completed", () => {
   const lock = {lockfileVersion: 1, dependencies: {

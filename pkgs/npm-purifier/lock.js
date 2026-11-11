@@ -439,7 +439,10 @@ const main = (root, purifierLockPath) => {
   }
   const projectInputs = process.env.NPM_PURIFIER_INPUT_PINS
     ? readJson(process.env.NPM_PURIFIER_INPUT_PINS) : [];
-  if (Object.keys(git).length === 0 && Object.keys(completions).length === 0 && projectInputs.length === 0) {
+  const priorLock = fs.existsSync(purifierLockPath) ? readJson(purifierLockPath) : null;
+  const implementation = implementationPin(priorLock, process.env.NPM_PURIFIER_IMPLEMENTATION_CONFIG
+    ? readJson(process.env.NPM_PURIFIER_IMPLEMENTATION_CONFIG) : null);
+  if (!priorLock && !implementation && Object.keys(git).length === 0 && Object.keys(completions).length === 0 && projectInputs.length === 0) {
     fs.rmSync(purifierLockPath, { force: true });
     process.stderr.write(`npm-purifier: ${path.basename(packageLockPath)} records every download; no npm-purifier.lock.json needed\n`);
     return;
@@ -448,6 +451,7 @@ const main = (root, purifierLockPath) => {
   const lock = {
     version: formatVersion,
     hash: "",
+    ...(implementation ? { implementation } : {}),
     packageLockSha256: crypto.createHash("sha256").update(packageLockText).digest("hex"),
     git: sorted,
     ...(projectInputs.length > 0 ? { projectInputs } : {}),
@@ -458,7 +462,17 @@ const main = (root, purifierLockPath) => {
 };
 
 // The parts that need no network, for pkgs/npm-purifier/lock.test.js.
+const implementationPin = (previous, config) => {
+  // A dependency relock never upgrades or silently migrates an existing lock.
+  if (previous) return previous.implementation;
+  if (!config) return undefined;
+  if (!config.source) throw new Error("this purifier has no portable source identity; use the source's exported packages with its pinned inputs and SDK recipes");
+  return { version: 1, tool: "npm-purifier", source: config.source,
+    ...(config.configuration != null ? { configuration: config.configuration } : {}) };
+};
+
 module.exports = {
+  implementationPin,
   withHash,
   cloneUrlOf,
   gitDependencies,

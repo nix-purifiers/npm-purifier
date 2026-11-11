@@ -72,8 +72,8 @@
       else
         "/package-lock.json"
     ),
-  # npm-purifier.lock.json. It is read only when the project has git
-  # dependencies or package-lock.json has incomplete entries. A flake that
+  # npm-purifier.lock.json records the implementation and any git or
+  # incomplete download entries. A flake that
   # packages a project without changing it keeps the file outside `src`.
   lockFile ? src + lib.optionalString (projectDir != "") "/${projectDir}" + "/npm-purifier.lock.json",
 }:
@@ -299,7 +299,7 @@ let
       read = readLockFile lockFile "run `npm-purifier lock` to write it again";
       stored = read.value.hash or "";
     in
-    if !hasGit && incomplete == { } then
+    if !hasGit && incomplete == { } && !builtins.pathExists lockFile then
       { value = { }; }
     else if !builtins.pathExists lockFile then
       if hasGit then
@@ -411,6 +411,7 @@ let
 in
 {
   purifier = "npm-purifier";
+  implementation = purifierLock.value.implementation or null;
   # The same tarball can be installed at several places in the tree; the
   # cache holds it once.
   entries =

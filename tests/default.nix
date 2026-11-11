@@ -45,15 +45,26 @@ let
   };
 
   # Every kind of git dependency: a GitHub archive, a GitHub archive npm
-  # prepares, a Codeberg repository npm clones, and a cloned repository
+  # prepares, a Codeberg Git tree, and a cloned repository
   # with a submodule that npm prepares. The last one is a repository these
   # tests make (tests/git-repositories.nix), which the build takes as a
   # checkout.
   repositories = pkgs.callPackage ./git-repositories.nix { };
   cloneResolved = "git+https://example.invalid/npm-purifier-clone.git#c2eaed048fb06b92697c038ecaf17236a1a363fa";
+  codebergResolved = "git+https://codeberg.org/sailingthroughcode/remark-iptc-caption.git#84da44035a4b19d689178a10610d75264775635b";
+  # The official archive has exactly the recorded Git checkout's NAR hash.
+  # Cache those same fixture bytes without depending on Codeberg's live
+  # Git service; keep the original locked URL, commit object and hash.
+  gitCheckouts = {
+    ${cloneResolved} = repositories.checkout;
+    ${codebergResolved} = pkgs.fetchzip {
+      url = "https://codeberg.org/sailingthroughcode/remark-iptc-caption/archive/84da44035a4b19d689178a10610d75264775635b.tar.gz";
+      hash = (lib.importJSON ./fixtures/git/npm-purifier.lock.json).git.${codebergResolved}.hash;
+    };
+  };
   git = buildNpmProject {
     src = ./fixtures/git;
-    gitCheckouts.${cloneResolved} = repositories.checkout;
+    inherit gitCheckouts;
   };
 
   # A project in a directory of a larger tree: it depends on a directory
@@ -121,10 +132,51 @@ let
       throw "npm-purifier check ${name}: ${message}";
 in
 {
+  implementation-context = import ./implementation-context.nix {
+    inherit pkgs purifier npm-purifier;
+  };
+  implementation-sdk = import ./implementation-sdk.nix {
+    inherit pkgs;
+    scope = withOverlay.npm-purifier;
+  };
+  implementation-lifecycle-driver =
+    let
+      bootstrap = pkgs.callPackage purifier.implementation {
+        source = { };
+        repository = "nix-purifiers/npm-purifier";
+        tool = "npm-purifier";
+        nativeCommand = "npm";
+        checksum = "npm";
+        lockVersions = [ 3 ];
+      };
+    in
+    pkgs.writeShellApplication {
+      name = "npm-implementation-lifecycle";
+      runtimeInputs = [
+        pkgs.nix
+        pkgs.git
+        pkgs.python3
+      ];
+      text = ''
+        exec python ${./implementation-lifecycle.py} \
+          --baseline ${./implementation-baseline.json} \
+          --sdk-baseline ${./implementation-sdk-baseline.json} \
+          --sdk-script ${./implementation-sdk-lifecycle.py} \
+          --sdk-fixture ${./fixtures/legacy-node} \
+          --fixture ${./fixtures/app} \
+          --bootstrap ${bootstrap.tool} --source-model ${bootstrap.sourceModel} "$@"
+      '';
+    };
   current-node =
     pkgs.runCommand "npm-current-node"
       {
         passthru = {
+          withSource =
+            src:
+            buildNpmProject {
+              inherit src;
+              doCheck = true;
+            };
           nodeVersion = pkgs.nodejs.version;
           inherit (current) release;
           repository = current.packages.legacy-npm-app.projections.npm;
@@ -338,7 +390,7 @@ in
       external = buildNpmProject {
         src = without [ "npm-purifier.lock.json" ];
         lockFile = ./fixtures/git/npm-purifier.lock.json;
-        gitCheckouts.${cloneResolved} = repositories.checkout;
+        inherit gitCheckouts;
       };
       replaced = buildNpmProject {
         src = without [
@@ -347,7 +399,7 @@ in
         ];
         lockFile = ./fixtures/git/npm-purifier.lock.json;
         packageLock = ./fixtures/git/package-lock.json;
-        gitCheckouts.${cloneResolved} = repositories.checkout;
+        inherit gitCheckouts;
       };
     in
     pkgs.runCommand "conformance-external-check" { } ''
@@ -495,6 +547,8 @@ in
           ${pkgs.python3}/bin/python ${./darwin-loopback.py}
         ''}
         http-server --version | grep -qx v14.1.2
+        ${pkgs.python3}/bin/python ${./http-server-timeout.py} \
+          ${lib.getExe real.httpServer.packages.http-server}
         touch $out
       '';
 

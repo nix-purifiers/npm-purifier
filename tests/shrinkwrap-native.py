@@ -24,5 +24,5 @@ for name, version in points:
     subprocess.run([
         sys.executable, 'tests/legacy-native.py', str(tools),
         str(release / 'legacy-npm-app.tgz'), version, outputs['out'],
-        str(pathlib.Path(outputs['metadata']) / 'catalog.json'), name,
+        str(pathlib.Path(outputs['metadata']) / 'catalog.json'), name, name,
     ], check=True)
