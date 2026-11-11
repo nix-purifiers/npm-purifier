@@ -150,6 +150,12 @@ in
     pkgs.runCommand "npm-current-node"
       {
         passthru = {
+          withSource =
+            src:
+            buildNpmProject {
+              inherit src;
+              doCheck = true;
+            };
           nodeVersion = pkgs.nodejs.version;
           inherit (current) release;
           repository = current.packages.legacy-npm-app.projections.npm;

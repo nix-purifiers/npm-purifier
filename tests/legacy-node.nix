@@ -21,6 +21,13 @@ in
 pkgs.runCommand "npm-legacy-node"
   {
     passthru = {
+      withSource =
+        src:
+        buildNpmProject {
+          inherit src node;
+          doCheck = true;
+          nativeBuildInputs = [ ];
+        };
       inherit (project) release;
       repository = project.packages.legacy-npm-app.projections.npm;
     };

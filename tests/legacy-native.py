@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import tarfile
 
 from registry_fixture import registry
 
@@ -16,6 +17,9 @@ version = sys.argv[3] if len(sys.argv) > 3 else '12.22.12'
 prepared = Path(sys.argv[4]) if len(sys.argv) > 4 else None
 catalog = Path(sys.argv[5]) if len(sys.argv) > 5 else None
 fixture = sys.argv[6] if len(sys.argv) > 6 else 'legacy-node'
+point = sys.argv[7]
+source = Path(__file__).resolve().parent.parent
+source_ref = 'git+' + source.as_uri() + '?rev=' + subprocess.check_output(['git','-C',str(source),'rev-parse','HEAD'],text=True).strip()
 lock_name = 'npm-shrinkwrap.json' if fixture.startswith('shrinkwrap-') else 'package-lock.json'
 env = dict(os.environ, PATH=str(tools / 'bin') + os.pathsep + os.environ['PATH'])
 
@@ -36,6 +40,25 @@ with tempfile.TemporaryDirectory(prefix='npm-legacy-native-') as temporary:
     assert (root / 'package.json').read_bytes() == before['package.json']
     before[lock_name] = (root / lock_name).read_bytes()
     run('npm-purifier', 'prefetch', cwd=root)
+    # Compare publication against a pure build of the same post-lock source,
+    # including the new implementation pin, with this exact test SDK.
+    pure_environment = dict(os.environ, NPM_NATIVE_SOURCE=source_ref,
+                            NPM_NATIVE_PROJECT=str(root), NPM_NATIVE_POINT=point)
+    expression = '''let f = builtins.getFlake (builtins.getEnv "NPM_NATIVE_SOURCE");
+      p = f.checks.${builtins.currentSystem}.${builtins.getEnv "NPM_NATIVE_POINT"}.withSource
+        (/. + builtins.getEnv "NPM_NATIVE_PROJECT"); in p.release'''
+    release = Path(subprocess.check_output(['nix','build','--impure','--no-link','--print-out-paths','--expr',expression],
+                                          env=pure_environment,text=True).strip())
+    baseline_archive = expected_archive
+    expected_archive = release / 'legacy-npm-app.tgz'
+    def payload(archive):
+        with tarfile.open(archive, 'r:gz') as packed:
+            return sorted((entry.name, entry.mode, entry.type, entry.linkname,
+                           packed.extractfile(entry).read() if entry.isfile() else None)
+                          for entry in packed.getmembers()
+                          if entry.name != 'package/npm-purifier.lock.json')
+    assert payload(expected_archive) == payload(baseline_archive), 'implementation pin changed unrelated release payload'
+
     env['npm_config_registry'] = 'http://127.0.0.1:9'
     if int(npm_version.split('.')[0]) < 6:
         run('npm', 'install', '--cache-min=999999999', cwd=root)

@@ -8,7 +8,7 @@ import subprocess
 import tempfile
 root = Path(__file__).resolve().parent.parent
 system = subprocess.check_output(['nix','eval','--impure','--raw','--expr','builtins.currentSystem'],text=True).strip()
-source_ref = 'git+' + root.as_uri()
+source_ref = 'git+' + root.as_uri() + '?rev=' + subprocess.check_output(['git','-C',str(root),'rev-parse','HEAD'],text=True).strip()
 archived = json.loads(subprocess.check_output(
     ['nix','flake','archive','--json','--no-update-lock-file',source_ref],text=True))
 snapshot_path = Path(archived['path'])
@@ -51,9 +51,9 @@ with tempfile.TemporaryDirectory(prefix='npm-native-composition-') as temporary:
     output=run(npm,'exec','--','greet','42',capture_output=True,text=True).stdout
     assert 'hello, number 42' in output and 'esbuild:' in output, output
     assert before==(lockfile.read_bytes(),(project/'package-lock.json').read_bytes())
-    build_env = dict(env, NPM_COMPOSITION_FLAKE=snapshot, NPM_COMPOSITION_PROJECT=str(project))
+    build_env = dict(env, NPM_COMPOSITION_FLAKE=source_ref, NPM_COMPOSITION_PROJECT=str(project))
     expression = '''let
-      f = builtins.getFlake ("path:" + builtins.getEnv "NPM_COMPOSITION_FLAKE");
+      f = builtins.getFlake (builtins.getEnv "NPM_COMPOSITION_FLAKE");
       p = import f.inputs.nixpkgs { overlays=[f.overlays.default]; };
     in p.npm-purifier.buildNpmProject {src=/. + builtins.getEnv "NPM_COMPOSITION_PROJECT";}'''
     def build(attribute):

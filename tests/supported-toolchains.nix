@@ -91,6 +91,12 @@ let
               project.packages.legacy-npm-app
             ];
             passthru = {
+              withSource =
+                src:
+                buildNpmProject {
+                  inherit src node;
+                  doCheck = true;
+                };
               nodeVersion = node.version;
               inherit npmVersion;
               inherit (project) release;
