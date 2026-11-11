@@ -137,6 +137,7 @@ writeShellApplication {
     lockfile="$(realpath -m "$lockfile")"
     nativeLock="$root/package-lock.json"
     if [ -f "$root/npm-shrinkwrap.json" ]; then nativeLock="$root/npm-shrinkwrap.json"; fi
+    nativeLock="''${NPM_PURIFIER_TOOL_LOCKFILE:-$nativeLock}"
     lockfiles=("$nativeLock")
     if [ -f "$lockfile" ]; then
       lockfiles+=("$lockfile")
