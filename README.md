@@ -113,7 +113,7 @@ you specify another tag.
 ## Building the project with Nix
 
 Once the native development workflow is working, you can also build and
-test the whole project in the Nix sandbox. For this step, keep a flake or
+test the project in the Nix sandbox. For this step, keep a flake or
 another Nix build definition in the project's repository, or maintain an
 external packaging repository that points at its sources and lockfiles.
 The builder consumes the same lockfiles as the development workflow.
@@ -140,9 +140,14 @@ another one:
     { nixpkgs, npm-purifier, ... }:
     let
       system = "x86_64-linux";
+      pin = (builtins.fromJSON
+        (builtins.readFile ./npm-purifier.lock.json)).implementation;
+      selected =
+        (npm-purifier.lib.purifier.implementationSource.resolve
+          pin.source).flake;
       pkgs = import nixpkgs {
         inherit system;
-        overlays = [ npm-purifier.overlays.default ];
+        overlays = [ selected.overlays.default ];
       };
       project = pkgs.npm-purifier.buildNpmProject {
         src = ./.;
@@ -229,7 +234,12 @@ project root. Replace the example package name with one from your project:
 
 ```zsh
 nix build --impure --expr 'let
-  purifier = builtins.getFlake "github:nix-purifiers/npm-purifier";
+  bootstrap = builtins.getFlake "github:nix-purifiers/npm-purifier";
+  pin = (builtins.fromJSON
+    (builtins.readFile ./npm-purifier.lock.json)).implementation;
+  purifier =
+    (bootstrap.lib.purifier.implementationSource.resolve
+      pin.source).flake;
   pkgs = import purifier.inputs.nixpkgs {
     system = builtins.currentSystem;
     overlays = [ purifier.overlays.default ];
@@ -399,7 +409,12 @@ and runs its tests in the sandbox, with no Nix file added to the checkout:
 
 ```zsh
 nix build --impure --expr 'let
-  purifier = builtins.getFlake "github:nix-purifiers/npm-purifier";
+  bootstrap = builtins.getFlake "github:nix-purifiers/npm-purifier";
+  pin = (builtins.fromJSON
+    (builtins.readFile ./npm-purifier.lock.json)).implementation;
+  purifier =
+    (bootstrap.lib.purifier.implementationSource.resolve
+      pin.source).flake;
   pkgs = import purifier.inputs.nixpkgs {
     system = builtins.currentSystem;
     overlays = [ purifier.overlays.default ];
@@ -432,7 +447,12 @@ the server with that lockfile:
 
 ```zsh
 nix build --impure --expr 'let
-  purifier = builtins.getFlake "github:nix-purifiers/npm-purifier";
+  bootstrap = builtins.getFlake "github:nix-purifiers/npm-purifier";
+  pin = (builtins.fromJSON
+    (builtins.readFile ../http-server.lock.json)).implementation;
+  purifier =
+    (bootstrap.lib.purifier.implementationSource.resolve
+      pin.source).flake;
   pkgs = import purifier.inputs.nixpkgs {
     system = builtins.currentSystem;
     overlays = [ purifier.overlays.default ];
