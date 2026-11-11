@@ -56,6 +56,7 @@
   nodejs,
   python3,
   nix,
+  implementation ? null,
 }:
 {
   # The source tree. It holds the project and every local directory the
@@ -585,6 +586,14 @@ let
       }
     );
 in
+assert
+  (lock.implementation or null) == null
+  || (
+    if implementation == null then
+      throw "npm-purifier: a pinned project requires the implementation-aware overlay"
+    else
+      implementation.check lock.implementation true
+  );
 assert
   builtins.all (name: builtins.hasAttr name lock.outputs) (builtins.attrNames webAssets)
   || throw "npm-purifier: webAssets must name packages owned by this project";

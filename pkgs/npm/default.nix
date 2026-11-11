@@ -22,6 +22,7 @@
   python3,
   git,
   npm-purifier,
+  implementation,
 }:
 writeShellApplication {
   name = "npm";
@@ -44,7 +45,7 @@ writeShellApplication {
     root=
     dir="$PWD"
     while [ "$dir" != / ]; do
-      if [ -f "$dir/package-lock.json" ] || [ -f "$dir/npm-shrinkwrap.json" ]; then
+      if [ -f "$dir/package-lock.json" ] || [ -f "$dir/npm-shrinkwrap.json" ] || [ -f "$dir/npm-purifier.lock.json" ]; then
         root="$dir"
         break
       fi
@@ -56,8 +57,23 @@ writeShellApplication {
     fi
     lockfileArgs=()
     if [ -n "''${NPM_PURIFIER_LOCKFILE:-}" ]; then
+      NPM_PURIFIER_LOCKFILE="$(realpath -m "$NPM_PURIFIER_LOCKFILE")"
+      export NPM_PURIFIER_LOCKFILE
       lockfileArgs=(--lockfile "$NPM_PURIFIER_LOCKFILE")
     fi
+    if [ -n "''${NPM_PURIFIER_TOOL_LOCKFILE:-}" ]; then
+      NPM_PURIFIER_TOOL_LOCKFILE="$(realpath -m "$NPM_PURIFIER_TOOL_LOCKFILE")"
+      export NPM_PURIFIER_TOOL_LOCKFILE
+    fi
+    selected="$(${python3}/bin/python ${implementation.tool} dispatch \
+      --config ${implementation.manifest} \
+      --lockfile "''${NPM_PURIFIER_LOCKFILE:-$root/npm-purifier.lock.json}" \
+      --entry npm)"
+    if [ -n "$selected" ]; then exec "$selected" "$@"; fi
+    if [ ! -f "''${NPM_PURIFIER_LOCKFILE:-$root/npm-purifier.lock.json}" ]; then
+      echo "npm-purifier: warning: the native lock does not pin npm-purifier; run \`npm-purifier lock\` to record its implementation." >&2
+    fi
+    export NPM_PURIFIER_IMPLEMENTATION_CONFIG=${implementation.manifest}
 
     # The first argument that is not an option is npm's command.
     command=

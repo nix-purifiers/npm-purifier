@@ -39,6 +39,7 @@
   git,
   nix-prefetch-git,
   stdenv,
+  implementation,
 }:
 writeShellApplication {
   name = "npm-purifier";
@@ -50,17 +51,23 @@ writeShellApplication {
     nix-prefetch-git
   ];
   text = ''
+    originalArgs=("$@")
+    implementationRelock=false
     npm=${lib.getExe' nodejs "npm"}
     flake=${../..}
     system=${stdenv.hostPlatform.system}
 
     usage() {
-      echo "usage: npm-purifier lock|update|prefetch|publish [--lockfile <path>] [arguments]" >&2
+      echo "usage: npm-purifier lock|update|prefetch|publish|implementation|self-update [--lockfile <path>] [arguments]" >&2
       exit 2
     }
 
     command="''${1:-}"
     [ -n "$command" ] || usage
+    if [ "$command" = implementation-relock ]; then
+      implementationRelock=true
+      command=lock
+    fi
     shift
     lockfile=
     if [ -n "''${NPM_PURIFIER_LOCKFILE:-}" ]; then
@@ -71,9 +78,15 @@ writeShellApplication {
       toolLockfile="$(realpath -m "$NPM_PURIFIER_TOOL_LOCKFILE")"
     fi
     inputArgs=()
+    implementationNativeLock=
     rest=()
     while [ "$#" -gt 0 ]; do
       case "$1" in
+        --implementation-native-lockfile)
+          [ "$implementationRelock" = true ] && [ "$#" -ge 2 ] || usage
+          implementationNativeLock="$(realpath -m "$2")"
+          shift 2
+          ;;
         --input)
           [ "$#" -ge 2 ] || usage
           inputArgs+=(--input "$2")
@@ -118,17 +131,75 @@ writeShellApplication {
       root="$(dirname "$root")"
     done
     nativeLock="$root/package-lock.json"
-    npmMajor="$($npm --version | cut -d. -f1)"
-    if [ -f "$root/npm-shrinkwrap.json" ] || [ "$npmMajor" -lt 5 ]; then
+    if [ -f "$root/npm-shrinkwrap.json" ]; then
       nativeLock="$root/npm-shrinkwrap.json"
     fi
+    explicitLockfile=false
+    if [ -n "$lockfile" ]; then explicitLockfile=true; fi
     lockfile="''${lockfile:-$root/npm-purifier.lock.json}"
     state="$root/.npm-purifier"
+    dispatchLock="$lockfile"
+    parentLock=
+    if [ "$explicitLockfile" = false ] && [ ! -f "$lockfile" ] && [ ! -f "$nativeLock" ]; then
+      parent="$(dirname "$root")"
+      while [ "$parent" != / ]; do
+        if [ -f "$parent/npm-purifier.lock.json" ]; then
+          parentPinned="$(${python3}/bin/python - "$parent/npm-purifier.lock.json" <<'PY'
+    import json, sys
+    print(1 if json.load(open(sys.argv[1])).get("implementation") is not None else 0)
+    PY
+          )"
+          if [ "$parentPinned" = 1 ]; then
+            parentLock="$parent/npm-purifier.lock.json"
+            dispatchLock="$parentLock"
+            break
+          fi
+        fi
+        # An independent native project is a boundary, including a legacy
+        # project that has not adopted an implementation pin.
+        if [ -f "$parent/package-lock.json" ] || [ -f "$parent/npm-shrinkwrap.json" ]; then break; fi
+        parent="$(dirname "$parent")"
+      done
+    fi
+
+    if [ "$command" = self-update ]; then
+      if [ -n "$parentLock" ]; then
+        echo "npm-purifier: run self-update from the pinned project root $(dirname "$parentLock")." >&2
+        exit 1
+      fi
+      exec ${python3}/bin/python ${implementation.tool} self-update \
+        --config ${implementation.manifest} --lockfile "$lockfile" \
+        --installed-command "$0" --native-lockfile "''${toolLockfile:-$nativeLock}" "''${rest[@]}"
+    fi
+    selected="$(${python3}/bin/python ${implementation.tool} dispatch \
+      --config ${implementation.manifest} --lockfile "$dispatchLock" \
+      --entry npm-purifier)"
+    if [ -n "$selected" ]; then exec "$selected" "''${originalArgs[@]}"; fi
+    if [ -n "$parentLock" ] && [ "$command" != implementation ]; then
+      echo "npm-purifier: a parent project has an implementation pin; run this command from $(dirname "$parentLock"), or supply --lockfile explicitly for an independent project." >&2
+      exit 1
+    fi
+    export NPM_PURIFIER_IMPLEMENTATION_CONFIG=${implementation.manifest}
+    if [ "$command" = implementation ]; then
+      exec ${python3}/bin/python ${implementation.tool} current \
+        --config ${implementation.manifest} --lockfile "$lockfile"
+    fi
+    npmMajor="$($npm --version | cut -d. -f1)"
+    if [ "$npmMajor" -lt 5 ]; then nativeLock="$root/npm-shrinkwrap.json"; fi
 
     # The build of the project, as nix/lib/project.nix makes it.
     project="
       (let
-        f = builtins.getFlake \"path:$flake\";
+        f =
+          let
+            path = builtins.getEnv \"NPM_PURIFIER_LOCKFILE\";
+            locked = if builtins.pathExists path then builtins.fromJSON (builtins.readFile path) else { };
+            pin = locked.implementation or null;
+          in if pin == null then builtins.getFlake \"path:$flake\"
+          else if (pin.version or null) != 1 || (pin.tool or null) != \"npm-purifier\"
+            || builtins.attrNames pin != [ \"source\" \"tool\" \"version\" ]
+          then throw \"npm-purifier: unsupported implementation pin\"
+          else ((import ${implementation.sourceModel}).resolve pin.source).flake;
       in
       import $flake/nix/lib/project.nix {
         inherit (f) lib;
@@ -146,8 +217,14 @@ writeShellApplication {
           if path == \"\" then null else /. + path;
       })"
     export NPM_PURIFIER_PACKAGE_LOCK="$nativeLock"
+    if [ "$implementationRelock" = true ]; then
+      [ -n "$implementationNativeLock" ] || usage
+    fi
     export NPM_PURIFIER_LOCKFILE="$lockfile"
     export NPM_PURIFIER_TOOL_LOCKFILE="$toolLockfile"
+    if [ "$implementationRelock" = true ]; then
+      export NPM_PURIFIER_TOOL_LOCKFILE="$implementationNativeLock"
+    fi
 
     # withToolLockfile <command>...: runs the command with the outside
     # package-lock.json put where the package-lock.json of the project
@@ -211,6 +288,15 @@ writeShellApplication {
         exit
         ;;
       lock)
+        if [ "$implementationRelock" = true ]; then
+          # The source pin is already staged. Validate it with this builder,
+          # without replacing native resolution, git hashes, completion hashes
+          # or provided project inputs by freshly queried registry metadata.
+          checkJson "$implementationNativeLock" "restore the native dependency lock"
+          checkJson "$lockfile" "restore the purifier lock"
+          nix eval --impure --json --expr "$project.fetches" > /dev/null
+          exit
+        fi
         withToolLockfile env \
           NPM_PURIFIER_NPM_MODULES=${hostNode}/lib/node_modules/npm/node_modules \
           NPM_PURIFIER_NPM="$npm" \

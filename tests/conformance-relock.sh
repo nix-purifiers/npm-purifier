@@ -6,9 +6,8 @@
 # network, and has to write package-lock.json and npm-purifier.lock.json
 # as committed.
 #
-# For tests/fixtures/git, the run locks the git dependencies afresh. The
-# entry for the repository the tests make (tests/git-repositories.nix)
-# stays, because its URL resolves nowhere; the lock run reuses it.
+# For tests/fixtures/git, relocking retains the existing immutable git
+# entries, including the deliberately unreachable repository fixture.
 #
 # Usage: tests/conformance-relock.sh, from any directory, with Nix and the
 # network.
@@ -38,17 +37,22 @@ relock() {
   if [ -f "$fixture/npm-purifier.lock.json" ]; then
     diff -u "$fixture/npm-purifier.lock.json" "$copy/npm-purifier.lock.json"
   elif [ -f "$copy/npm-purifier.lock.json" ]; then
-    echo "$1: the lock run wrote an npm-purifier.lock.json the fixture lacks" >&2
-    exit 1
+    # Native-only legacy fixtures gain a project-owned implementation pin on
+    # first activation. The next lock must reproduce that complete file.
+    python3 - "$copy/npm-purifier.lock.json" <<'PY'
+import json, sys
+pin = json.load(open(sys.argv[1]))['implementation']
+assert pin['version'] == 1 and pin['tool'] == 'npm-purifier'
+assert len(pin['source']['rev']) == 40 and pin['source']['narHash'].startswith('sha256-')
+PY
+    first="$work/first-${1//\//_}.lock"
+    cp "$copy/npm-purifier.lock.json" "$first"
+    (cd "$copy" && "$purifier" lock)
+    diff -u "$first" "$copy/npm-purifier.lock.json"
+    diff -u "$fixture/package-lock.json" "$copy/package-lock.json"
   fi
   echo "$1: relocked byte for byte"
 }
-
-# The git fixture keeps only the entry the run cannot make.
-mkdir -p "$work/git"
-nix run 'nixpkgs#jq' -- \
-  '.git |= with_entries(select(.key | startswith("git+https://example.invalid/")))' \
-  "$root/tests/fixtures/git/npm-purifier.lock.json" > "$work/git/npm-purifier.lock.json"
 
 relock app
 relock workspaces

@@ -22,9 +22,21 @@ const {
   incompleteEntries,
   completeLock,
   withHash,
+  implementationPin,
 } = require("./lock.js");
 
 const sha = "98e8ff1da1a89f93d1397a24d7413ed15421c139";
+
+test("dependency relocking preserves implementation and explicit legacy migration", () => {
+  const old = { version: 1, tool: "npm-purifier", source: { rev: "old" } };
+  const installed = { source: { rev: "new" } };
+  assert.deepEqual(implementationPin({ implementation: old }, installed), old);
+  assert.equal(implementationPin({ version: 3 }, installed), undefined);
+  assert.deepEqual(implementationPin(null, installed), {
+    version: 1, tool: "npm-purifier", source: installed.source,
+  });
+  assert.throws(() => implementationPin(null, { source: null }), /portable source identity/);
+});
 
 test("legacy nested locks retain their format and scoped paths when completed", () => {
   const lock = {lockfileVersion: 1, dependencies: {

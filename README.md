@@ -23,16 +23,16 @@ test and editor commands with this setup. Nix provides the locked
 dependencies; the development commands above run outside the Nix sandbox.
 No project Nix files are needed for this workflow.
 
-Sandboxed builds of the whole project are an optional
+Sandboxed builds are an optional
 [next step](#building-the-project-with-nix).
 
 The shell provides the `npm` wrapper. Use it for the locked
 development workflow. The native lockfile can supply the complete
-download record; a separate purifier lock is needed for the cases described
-below. With no usable lockfile, the wrapper warns on standard error and
+download record; the purifier lock records the implementation and any extra
+download information npm cannot represent. With no usable lockfile, the wrapper warns on standard error and
 runs the ordinary tool with impure resolution.
 
-For persistent use, add these packages through your usual Nix configuration.
+Install these packages through your usual Nix configuration.
 
 
 ## Development loop
@@ -69,6 +69,23 @@ dependency, or on the packages named after it, and then locks as
 Nix and runs `npm publish` on that tarball. Further arguments go to
 `npm publish`, so `npm-purifier publish --dry-run` shows what would be
 uploaded. Nothing is packed outside the sandbox.
+
+### Updating npm-purifier
+
+New project locks pin npm-purifier's source revision and hash. Updating the
+installed wrapper or running `npm-purifier update` preserves that pin.
+To select your installed version explicitly:
+
+```sh
+npm-purifier self-update --to installed
+```
+
+Or select a published revision with `--to github:nix-purifiers/npm-purifier/REV`.
+The selected implementation relocks a staged copy before replacing the lock;
+this operation preserves npm's dependency lock. `npm-purifier implementation`
+prints the selected identity. Existing locks without a pin warn until explicitly
+migrated with `self-update`. Use a wrapper that supports implementation pins;
+older wrappers cannot enforce them. Projects need no flake.
 
 ## Dependencies from another purified project
 
@@ -376,8 +393,8 @@ npm ci
 npm test
 ```
 
-commander.js has no git dependencies, so the lock run writes no
-`npm-purifier.lock.json`. From the same directory, this builds the package
+The native lock records commander.js dependencies; `npm-purifier.lock.json`
+also pins the purifier implementation. From the same directory, this builds the package
 and runs its tests in the sandbox, with no Nix file added to the checkout:
 
 ```zsh
