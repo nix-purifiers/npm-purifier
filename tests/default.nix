@@ -121,6 +121,31 @@ let
       throw "npm-purifier check ${name}: ${message}";
 in
 {
+  implementation-lifecycle-driver =
+    let
+      bootstrap = pkgs.callPackage purifier.implementation {
+        source = { };
+        repository = "nix-purifiers/npm-purifier";
+        tool = "npm-purifier";
+        nativeCommand = "npm";
+        checksum = "npm";
+        lockVersions = [ 3 ];
+      };
+    in
+    pkgs.writeShellApplication {
+      name = "npm-implementation-lifecycle";
+      runtimeInputs = [
+        pkgs.nix
+        pkgs.git
+        pkgs.python3
+      ];
+      text = ''
+        exec python ${./implementation-lifecycle.py} \
+          --baseline ${./implementation-baseline.json} \
+          --fixture ${./fixtures/app} \
+          --bootstrap ${bootstrap.tool} --source-model ${bootstrap.sourceModel} "$@"
+      '';
+    };
   current-node =
     pkgs.runCommand "npm-current-node"
       {
