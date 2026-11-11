@@ -34,6 +34,9 @@ def main():
     parser.add_argument("--source-model", required=True)
     parser.add_argument("--local-source", help="local Git locator for pre-publication validation only")
     parser.add_argument("--output")
+    parser.add_argument("--sdk-baseline")
+    parser.add_argument("--sdk-script")
+    parser.add_argument("--sdk-fixture")
     args = parser.parse_args()
     spec = importlib.util.spec_from_file_location("bootstrap", args.bootstrap)
     bootstrap = importlib.util.module_from_spec(spec)
@@ -171,6 +174,15 @@ def main():
                    "mismatchedBuilderRejected": True, "externalLock": True, "coldExternalNativeLock": True,
                    "relativeOverrideWithCompetingPin": True, "ancestorImplementationSelected": True,
                    "ambiguousNestedLockRejectedBeforeNativeWork": True}
+        if args.sdk_baseline:
+            if not args.sdk_script or not args.sdk_fixture:
+                parser.error('SDK lifecycle requires its script and fixture')
+            sdk_output = Path(str(args.output) + '.sdk.json') if args.output else work / 'configured-sdk.json'
+            execute([sys.executable, args.sdk_script, '--baseline-source', args.sdk_baseline,
+                     '--current', args.current, '--bootstrap', args.bootstrap,
+                     '--fixture', args.sdk_fixture, '--output', sdk_output])
+            receipt['configuredSdk'] = json.loads(sdk_output.read_text())
+            receipt['configuredSdkReceiptSha256'] = hashlib.sha256(sdk_output.read_bytes()).hexdigest()
         text = json.dumps(receipt, indent=2) + "\n"
         if args.output:
             Path(args.output).write_text(text)

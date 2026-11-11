@@ -16,7 +16,8 @@ sys.dont_write_bytecode = True
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--baseline', required=True, help='Immutable flake reference with configuration support')
+    parser.add_argument('--baseline', help='Immutable flake reference with configuration support')
+    parser.add_argument('--baseline-source', help='JSON source descriptor with expected revision and NAR hash')
     parser.add_argument('--current', required=True)
     parser.add_argument('--bootstrap', required=True)
     parser.add_argument('--fixture', required=True)
@@ -40,9 +41,23 @@ def main():
             raise AssertionError('native SDK command failed: ' + str(result.returncode))
         return result
 
-    defaults = [Path(run(['nix', 'build', ref + '#npm', '--no-link', '--print-out-paths']).stdout.strip())
-                for ref in (args.baseline, args.current)]
-    config = json.loads((defaults[1] / 'share/purifier/implementation.json').read_text())
+    baseline_source = None
+    if args.baseline_source:
+        baseline_source = json.loads(Path(args.baseline_source).read_text())['source']
+        bootstrap.validate_source(baseline_source)
+        args.baseline = bootstrap.source_ref(baseline_source)
+    if not args.baseline:
+        parser.error('a baseline reference or source descriptor is required')
+    current_default = Path(run(['nix', 'build', args.current + '#npm', '--no-link', '--print-out-paths']).stdout.strip())
+    config = json.loads((current_default / 'share/purifier/implementation.json').read_text())
+    if baseline_source is None:
+        old_default = Path(run(['nix', 'build', args.baseline + '#npm', '--no-link', '--print-out-paths']).stdout.strip())
+    else:
+        # Verify the fixed baseline's source bytes before evaluating its code.
+        old_pin = {'version': 1, 'tool': 'npm-purifier', 'source': baseline_source}
+        old_default = bootstrap.resolve_package(old_pin, config, 'npm', Path(args.output).parent / 'sdk-bootstrap.lock.json')
+        bootstrap.verify_package(old_default, old_pin)
+    defaults = [old_default, current_default]
     sdk_version = '24.22.2' if config['system'].endswith('-darwin') else '8.17.0'
     configuration = {'version': 1, 'node': {'type': 'upstream-node', 'version': sdk_version}}
     sources = []
@@ -52,6 +67,8 @@ def main():
         source = {key: locked[key] for key in keys}
         manifest = json.loads((default / 'share/purifier/implementation.json').read_text())
         assert bootstrap.same_source(source, manifest['source'])
+        if not sources and baseline_source is not None:
+            assert bootstrap.same_source(source, baseline_source)
         sources.append(source)
     with tempfile.TemporaryDirectory(prefix='npm-configured-implementation-') as tmp:
         root = Path(tmp)

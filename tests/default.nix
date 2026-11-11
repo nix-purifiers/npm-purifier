@@ -160,6 +160,9 @@ in
       text = ''
         exec python ${./implementation-lifecycle.py} \
           --baseline ${./implementation-baseline.json} \
+          --sdk-baseline ${./implementation-sdk-baseline.json} \
+          --sdk-script ${./implementation-sdk-lifecycle.py} \
+          --sdk-fixture ${./fixtures/legacy-node} \
           --fixture ${./fixtures/app} \
           --bootstrap ${bootstrap.tool} --source-model ${bootstrap.sourceModel} "$@"
       '';

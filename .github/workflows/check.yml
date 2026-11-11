@@ -162,5 +162,5 @@ jobs:
         if: always()
         with:
           name: npm-implementation-${{ matrix.runner }}
-          path: ${{ runner.temp }}/npm-implementation.json
+          path: ${{ runner.temp }}/npm-implementation*.json
           if-no-files-found: warn
