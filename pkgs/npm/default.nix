@@ -23,11 +23,15 @@
   git,
   npm-purifier,
   implementationForSdk,
+  implementationRuntimeMatches,
 }:
 let
   sdkImplementation = implementationForSdk nodejs;
   implementation =
-    if npm-purifier.implementation.source == null then
+    if
+      npm-purifier.implementation.source == null
+      || !implementationRuntimeMatches { inherit coreutils python3 git; }
+    then
       sdkImplementation.withoutIdentity
     else
       sdkImplementation;
@@ -36,7 +40,7 @@ assert lib.assertMsg (
   (npm-purifier.projectNode or null) != null
   && builtins.toString npm-purifier.projectNode == builtins.toString nodejs
   && npm-purifier.implementation == implementation.pin
-) "npm-purifier: npm and npm-purifier must select the same SDK recipe";
+) "npm-purifier: npm and npm-purifier must share their SDK and implementation context";
 implementation.wrap (
   (writeShellApplication {
     name = "npm";

@@ -33,18 +33,31 @@
   writeShellApplication,
   nodejs,
   pkgs,
-  hostNode ? pkgs.nodejs,
+  implementationHostNode,
+  hostNode ? implementationHostNode,
   python3,
   coreutils,
   git,
   nix-prefetch-git,
   stdenv,
   implementationForSdk,
+  implementationRuntimeMatches,
 }:
 let
   sdkImplementation = implementationForSdk nodejs;
   implementation =
-    if builtins.toString hostNode == builtins.toString pkgs.nodejs then
+    if
+      builtins.toString hostNode == builtins.toString implementationHostNode
+      && implementationRuntimeMatches {
+        inherit
+          coreutils
+          python3
+          git
+          nix-prefetch-git
+          stdenv
+          ;
+      }
+    then
       sdkImplementation
     else
       sdkImplementation.withoutIdentity;

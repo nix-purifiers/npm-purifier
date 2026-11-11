@@ -133,13 +133,14 @@ def main():
         # Arbitrary package overrides remain usable for an unpinned project,
         # but must not manufacture a portable default-SDK pin.
         custom_expression = ('let f = builtins.getFlake ' + bootstrap.nix_string(args.current)
-            + '; pkgs = import f.inputs.nixpkgs { system = ' + bootstrap.nix_string(config['system'])
-            + '; overlays = [ f.overlays.default ]; }; sdk = import (f.outPath + "/nix/lib/node-sdk.nix") '
-            + '{ inherit pkgs; version = ' + bootstrap.nix_string(sdk_version) + '; }; '
+            + '; base = import f.inputs.nixpkgs { system = ' + bootstrap.nix_string(config['system'])
+            + '; }; sdk = import (f.outPath + "/nix/lib/node-sdk.nix") '
+            + '{ pkgs = base; version = ' + bootstrap.nix_string(sdk_version) + '; }; '
             + 'node = sdk.overrideAttrs (old: { pname = old.pname + "-nonportable"; }); '
-            + 'cli = pkgs.npm-purifier.npm-purifier.override { nodejs = node; hostNode = pkgs.nodejs; }; '
-            + 'native = pkgs.npm-purifier.npm.override { nodejs = node; npm-purifier = cli; }; '
-            + 'in pkgs.buildEnv { name = "npm-custom-sdk-legacy"; paths = [ cli native ]; }')
+            + 'pkgs = import f.inputs.nixpkgs { system = ' + bootstrap.nix_string(config['system'])
+            + '; overlays = [ (_: _: { nodejs = node; }) f.overlays.default ]; }; '
+            + 'in pkgs.buildEnv { name = "npm-custom-sdk-legacy"; '
+            + 'paths = [ pkgs.npm-purifier.npm-purifier pkgs.npm-purifier.npm ]; }')
         custom = Path(run(['nix', 'build', '--impure', '--no-link', '--print-out-paths', '--expr', custom_expression]).stdout.strip())
         assert json.loads((custom / 'share/purifier/implementation.json').read_text())['source'] is None
         legacy = root / 'legacy'
@@ -163,6 +164,7 @@ def main():
                    'dependencyUpdateRetainsConfiguration': True, 'explicitSourceUpdateRetainsConfiguration': True,
                    'wrongSdkBuilderRejected': True, 'restoredLockBytes': True,
                    'customSdkLegacyNativeBuildTest': True, 'customSdkCannotCreatePortablePin': True,
+                   'customSdkAppliedThroughGlobalOverlay': True,
                    'bootstrapSha256': hashlib.sha256(Path(args.bootstrap).read_bytes()).hexdigest(), 'commands': commands}
         Path(args.output).write_text(json.dumps(receipt, indent=2) + '\n')
         print('Configured SDK lifecycle passed:', sdk_version)

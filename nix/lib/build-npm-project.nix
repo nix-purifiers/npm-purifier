@@ -54,11 +54,13 @@
   callPackage,
   git,
   nodejs,
+  hostNodejs ? nodejs,
   python3,
   nix,
   implementation ? null,
   implementationForSdk ? null,
   pkgs,
+  implementationPkgs ? pkgs,
 }:
 args@{
   # The source tree. It holds the project and every local directory the
@@ -101,7 +103,7 @@ args@{
   # the Node.js of nixpkgs, whose npm prepares them inside the sandbox.
   node ? null,
   # Host graph tooling, independent of the selected project runtime.
-  captureNode ? nodejs,
+  captureNode ? hostNodejs,
   # The package scripts that build the project, run in order before the
   # packages are packed. A script the root package defines runs at the
   # root; otherwise it runs in each workspace that defines it.
@@ -140,7 +142,7 @@ let
       args.node
     else if (lock.implementation.configuration or null) != null then
       import ./sdk-from-configuration.nix {
-        inherit pkgs;
+        pkgs = implementationPkgs;
         configuration = lock.implementation.configuration;
       }
     else
@@ -155,7 +157,7 @@ let
     else
       let
         expected = import ./sdk-from-configuration.nix {
-          inherit pkgs;
+          pkgs = implementationPkgs;
           configuration = configuredSdk;
         };
       in

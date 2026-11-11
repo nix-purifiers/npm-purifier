@@ -466,7 +466,7 @@ const implementationPin = (previous, config) => {
   // A dependency relock never upgrades or silently migrates an existing lock.
   if (previous) return previous.implementation;
   if (!config) return undefined;
-  if (!config.source) throw new Error("this purifier has no portable source identity; lock with a committed, published purifier revision");
+  if (!config.source) throw new Error("this purifier has no portable source identity; use the source's exported packages with its pinned inputs and SDK recipes");
   return { version: 1, tool: "npm-purifier", source: config.source,
     ...(config.configuration != null ? { configuration: config.configuration } : {}) };
 };

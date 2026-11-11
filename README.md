@@ -89,6 +89,8 @@ migrated with `self-update`.
 Exact SDK variants shipped by this source are recorded with the pin and replayed
 by the pinned source. An arbitrary patched SDK can still run unlocked or with a
 legacy lock, but cannot create a portable pin without a reproducible SDK recipe.
+The same applies when an overlay uses a different Nixpkgs or modified host tools;
+use the purifier source's exported packages to create a portable pin.
 Use a wrapper that supports implementation pins;
 older wrappers cannot enforce them. Projects need no flake.
 

@@ -16,6 +16,7 @@
     import ../../pkgs (
       args
       // {
+        implementationNixpkgs = closure-lib.caisson.libManifest.sources.nixpkgs.outPath;
         implementationSource = closure-lib.caisson.libManifest.root // {
           dirty =
             (closure-lib.caisson.libManifest.root.dirty or false)

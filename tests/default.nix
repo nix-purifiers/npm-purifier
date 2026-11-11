@@ -132,6 +132,9 @@ let
       throw "npm-purifier check ${name}: ${message}";
 in
 {
+  implementation-context = import ./implementation-context.nix {
+    inherit pkgs purifier npm-purifier;
+  };
   implementation-sdk = import ./implementation-sdk.nix {
     inherit pkgs;
     scope = withOverlay.npm-purifier;
