@@ -1,127 +1,60 @@
 --- a/lib/http-server.js
 +++ b/lib/http-server.js
-@@ -280,7 +280,7 @@
-     : union.createServer(serverOptions);
- 
-   if (isNaN(options.timeout) || isNaN(parseFloat(options.timeout))) {
+@@ -283 +283 @@
 -    this.server.setTimeout(120);
 +    this.server.setTimeout(120 * 1000);
-   } else {
-     // set custom timeout only if options.timeout is a numeric string
-     this.server.setTimeout(Math.max(0, Number(options.timeout)));
 --- a/bin/http-server
 +++ b/bin/http-server
-@@ -198,7 +198,8 @@
-   var options = {
-     root: argv._[0],
-     cache: argv.c,
+@@ -201 +201,2 @@
 -    timeout: argv.t,
 +    timeout: isNaN(argv.t) || isNaN(parseFloat(argv.t))
 +      ? argv.t : Number(argv.t) * 1000,
-     showDir: argv.d,
-     dirOverrides404: argv['dir-overrides-404'],
-     baseDir: baseDir,
 --- a/test/timeout.test.js
 +++ b/test/timeout.test.js
-@@ -8,7 +8,7 @@
- const root = path.join(__dirname, 'fixtures', 'root');
- 
- test('timeout: default behavior (no timeout specified)', (t) => {
+@@ -11 +11 @@
 -  t.plan(2);
 +  t.plan(3);
- 
-   const server = httpServer.createServer({
-     root
-@@ -19,33 +19,32 @@
-     // Verify server was created successfully
-     t.ok(server, 'server created without timeout option');
-     
+@@ -22,2 +22 @@
 -    // Check that server has a timeout property (Node.js default is usually 120000ms = 2 minutes)
 -    // But we're not setting it, so it should use Node.js default
 +    // The library should choose its documented 120-second default.
-     t.ok(server.server, 'server has underlying server instance');
+@@ -24,0 +24 @@
 +    t.equal(server.server.timeout, 120000, 'default timeout is 120 seconds');
-     
-     server.close();
-     t.end();
-   });
- });
- 
+@@ -31,2 +31,2 @@
 -test('timeout: custom timeout value in seconds', (t) => {
 -  t.plan(2);
 +test('timeout: custom timeout value in milliseconds', (t) => {
 +  t.plan(3);
- 
+@@ -34 +34 @@
 -  const timeoutSeconds = 60;
 +  const timeoutMs = 60000;
-   const server = httpServer.createServer({
-     root,
+@@ -37 +37 @@
 -    timeout: timeoutSeconds
 +    timeout: timeoutMs
-   });
- 
-   server.listen(0, () => {
-     const port = server.address().port;
-     t.ok(server, 'server created with custom timeout');
-     
+@@ -44,3 +44 @@
 -    // Verify timeout was set on the underlying server
 -    // Note: Node.js setTimeout expects milliseconds, but we're passing seconds
 -    // This test verifies the current behavior (may need adjustment after PR merge)
 +    // Explicit library options use milliseconds; the CLI converts seconds.
-     const underlyingServer = server.server;
-     t.ok(underlyingServer, 'server has underlying server instance');
+@@ -48,0 +47 @@
 +    t.equal(underlyingServer.timeout, timeoutMs, 'library option remains milliseconds');
-     
-     server.close();
-     t.end();
-@@ -53,7 +52,7 @@
- });
- 
- test('timeout: disabled timeout (0)', (t) => {
+@@ -56 +55 @@
 -  t.plan(2);
 +  t.plan(3);
- 
-   const server = httpServer.createServer({
-     root,
-@@ -66,6 +65,7 @@
-     
-     const underlyingServer = server.server;
-     t.ok(underlyingServer, 'server has underlying server instance');
+@@ -68,0 +68 @@
 +    t.equal(underlyingServer.timeout, 0, 'zero disables timeout');
-     
-     server.close();
-     t.end();
-@@ -126,7 +126,7 @@
- 
-   const server = httpServer.createServer({
-     root,
+@@ -129 +129 @@
 -    timeout: 60 // 60 seconds
 +    timeout: 60000 // milliseconds: 60 seconds
-   });
- 
-   server.listen(0, () => {
-@@ -157,12 +157,12 @@
- });
- 
- test('timeout: multiple timeout values', (t) => {
+@@ -160 +160 @@
 -  t.plan(4);
 +  t.plan(8);
- 
-   const testCases = [
+@@ -163,3 +163,3 @@
 -    { timeout: 30, description: '30 seconds' },
 -    { timeout: 120, description: '120 seconds (default)' },
 -    { timeout: 300, description: '300 seconds' },
 +    { timeout: 30000, description: '30 seconds' },
 +    { timeout: 120000, description: '120 seconds (default)' },
 +    { timeout: 300000, description: '300 seconds' },
-     { timeout: 0, description: 'disabled (0)' }
-   ];
- 
-@@ -178,6 +178,7 @@
-     server.listen(0, () => {
-       const port = server.address().port;
-       t.ok(server, `server created with timeout ${testCase.description}`);
+@@ -180,0 +181 @@
 +      t.equal(server.server.timeout, testCase.timeout, "native milliseconds retained");
-       
-       server.close();
-       completed++;
