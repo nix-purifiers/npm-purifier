@@ -131,6 +131,7 @@ def main():
         assert bootstrap.same_source(origin["source"], source_a)
         external_native = work / "external-package-lock.json"
         native.rename(external_native)
+        (project / ".npm-purifier/stamp").unlink(missing_ok=True)
         rootless_environment = dict(external_environment, NPM_PURIFIER_TOOL_LOCKFILE=str(external_native))
         origin = json.loads(execute([current_native / "bin/npm", "run", "--silent", "pin-origin"], project, rootless_environment).stdout)
         assert bootstrap.same_source(origin["source"], source_a)
@@ -163,7 +164,7 @@ def main():
                    "updatedBuild": matched_b, "updatedDerivation": matched_b_derivation,
                    "nativeCiBuildTest": True, "actualWrapperOrigin": True, "dependencyUpdatePreservesPin": True,
                    "explicitPurifierUpdate": True, "nativeLockUnchanged": True, "restoredLockBytes": True,
-                   "mismatchedBuilderRejected": True, "externalLock": True,
+                   "mismatchedBuilderRejected": True, "externalLock": True, "coldExternalNativeLock": True,
                    "relativeOverrideWithCompetingPin": True, "ancestorImplementationSelected": True,
                    "ambiguousNestedLockRejectedBeforeNativeWork": True}
         text = json.dumps(receipt, indent=2) + "\n"

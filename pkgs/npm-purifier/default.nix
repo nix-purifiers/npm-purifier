@@ -312,7 +312,8 @@ writeShellApplication {
         withToolLockfile updateAndLock
         ;;
       prefetch)
-        if [ ! -f "$nativeLock" ]; then
+        effectiveNativeLock="''${toolLockfile:-$nativeLock}"
+        if [ ! -f "$effectiveNativeLock" ]; then
           echo "npm-purifier: $root has no package-lock.json; run \`npm-purifier lock\`" >&2
           exit 1
         fi
@@ -331,7 +332,7 @@ writeShellApplication {
         done
         # The stamp tells the `npm` wrapper which lockfiles this prefetch
         # was for.
-        lockfiles=("$nativeLock")
+        lockfiles=("$effectiveNativeLock")
         if [ -f "$lockfile" ]; then
           lockfiles+=("$lockfile")
         fi
