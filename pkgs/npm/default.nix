@@ -41,6 +41,16 @@ writeShellApplication {
       exec "$npm" "$@"
     fi
 
+    lockfileArgs=()
+    if [ -n "''${NPM_PURIFIER_LOCKFILE:-}" ]; then
+      NPM_PURIFIER_LOCKFILE="$(realpath -m "$NPM_PURIFIER_LOCKFILE")"
+      export NPM_PURIFIER_LOCKFILE
+      lockfileArgs=(--lockfile "$NPM_PURIFIER_LOCKFILE")
+    fi
+    if [ -n "''${NPM_PURIFIER_TOOL_LOCKFILE:-}" ]; then
+      NPM_PURIFIER_TOOL_LOCKFILE="$(realpath -m "$NPM_PURIFIER_TOOL_LOCKFILE")"
+      export NPM_PURIFIER_TOOL_LOCKFILE
+    fi
     # The project root is the nearest directory upwards with a lockfile.
     root=
     dir="$PWD"
@@ -51,19 +61,20 @@ writeShellApplication {
       fi
       dir="$(dirname "$dir")"
     done
+    if [ -z "$root" ] && [ -n "''${NPM_PURIFIER_LOCKFILE:-}" ]; then
+      dir="$PWD"
+      while [ "$dir" != / ]; do
+        if [ -f "$dir/package.json" ]; then root="$dir"; break; fi
+        dir="$(dirname "$dir")"
+      done
+      selected="$(${python3}/bin/python ${implementation.tool} dispatch \
+        --config ${implementation.manifest} \
+        --lockfile "$NPM_PURIFIER_LOCKFILE" --entry npm)"
+      if [ -n "$selected" ]; then exec "$selected" "$@"; fi
+    fi
     if [ -z "$root" ]; then
       echo "npm-purifier: warning: no package-lock.json found; running npm impurely. Run \`npm-purifier lock\` to use Nix-resolved dependencies." >&2
       exec "$npm" "$@"
-    fi
-    lockfileArgs=()
-    if [ -n "''${NPM_PURIFIER_LOCKFILE:-}" ]; then
-      NPM_PURIFIER_LOCKFILE="$(realpath -m "$NPM_PURIFIER_LOCKFILE")"
-      export NPM_PURIFIER_LOCKFILE
-      lockfileArgs=(--lockfile "$NPM_PURIFIER_LOCKFILE")
-    fi
-    if [ -n "''${NPM_PURIFIER_TOOL_LOCKFILE:-}" ]; then
-      NPM_PURIFIER_TOOL_LOCKFILE="$(realpath -m "$NPM_PURIFIER_TOOL_LOCKFILE")"
-      export NPM_PURIFIER_TOOL_LOCKFILE
     fi
     selected="$(${python3}/bin/python ${implementation.tool} dispatch \
       --config ${implementation.manifest} \
