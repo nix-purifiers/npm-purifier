@@ -135,6 +135,8 @@ args@{
   # `filter` of builtins.path. The default leaves out installed
   # dependencies, version control and Nix result links.
   srcFilter ? null,
+  # Source patches apply consistently to builds, tests and production installs.
+  patches ? [ ],
 }:
 let
   node =
@@ -405,6 +407,7 @@ let
     name = "npm-project-release";
     passthru = { inherit projections; };
     src = filteredSrc;
+    inherit patches;
     nativeBuildInputs = inputs ++ [ nix ];
     inherit buildInputs;
     dontConfigure = true;
@@ -463,6 +466,7 @@ let
     # needs this explicit loopback permission; external outbound connections stay denied.
     __darwinAllowLocalNetworking = true;
     src = filteredSrc;
+    inherit patches;
     nativeBuildInputs = inputs;
     inherit buildInputs;
     dontConfigure = true;
@@ -486,6 +490,7 @@ let
   productionModules = stdenv.mkDerivation {
     name = "npm-project-production-modules";
     src = filteredSrc;
+    inherit patches;
     nativeBuildInputs = inputs;
     inherit buildInputs;
     dontConfigure = true;

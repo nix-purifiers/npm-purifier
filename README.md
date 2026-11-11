@@ -475,6 +475,11 @@ A flake of your own can do the same with http-server as an input that has
 `flake = false`, passing the path of its own `npm-purifier.lock.json` as
 `lockFile`.
 
+The pinned CI http-server sample carries an explicit
+[timeout-unit fix](tests/real-world/http-server/timeouts.patch). The same patch
+applies to its tests and packaged application; all upstream assertions remain,
+with additional checks for the API's milliseconds and the CLI's seconds.
+
 ## Browser assets for JVM applications
 
 `buildNpmProject { webAssets."@scope/package" = "dist"; ...; }` publishes

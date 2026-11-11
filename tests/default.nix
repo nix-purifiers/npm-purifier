@@ -547,6 +547,8 @@ in
           ${pkgs.python3}/bin/python ${./darwin-loopback.py}
         ''}
         http-server --version | grep -qx v14.1.2
+        ${pkgs.python3}/bin/python ${./http-server-timeout.py} \
+          ${lib.getExe real.httpServer.packages.http-server}
         touch $out
       '';
 

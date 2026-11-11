@@ -35,6 +35,10 @@
     # many entries. `npm-purifier lock --lockfile` recorded them in this
     # file, kept outside the project.
     lockFile = ./real-world/http-server/npm-purifier.lock.json;
+    # Carry a sample timeout-unit correction explicitly: Node's API uses milliseconds,
+    # while the CLI advertises seconds. Keep custom library units unchanged.
+    # This patches the packaged application and its entire test suite alike.
+    patches = [ ./real-world/http-server/timeouts.patch ];
     doCheck = true;
     # Two of the test files listen on port 8000; tap runs them one after
     # the other with one job.
