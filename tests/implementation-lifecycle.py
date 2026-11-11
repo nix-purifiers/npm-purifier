@@ -61,9 +61,9 @@ def main():
         work = Path(temporary).resolve()
         project = work / "project"
         shutil.copytree(args.fixture, project)
-        for path in project.rglob("*"):
+        for path in [project, *project.rglob("*")]:
             if not path.is_symlink():
-                path.chmod(path.stat().st_mode | 0o200)
+                path.chmod(path.stat().st_mode | (0o700 if path.is_dir() else 0o200))
         package = json.loads((project / "package.json").read_text())
         package["scripts"]["pin-origin"] = "node -e 'console.log(require(\"fs\").readFileSync(process.env.NPM_PURIFIER_IMPLEMENTATION_CONFIG,\"utf8\"))'"
         (project / "package.json").write_text(json.dumps(package, indent=2) + "\n")
