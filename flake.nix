@@ -55,7 +55,7 @@
                 inherit system;
                 overlays = [ base.overlays.default ];
               };
-              node = import ./nix/lib/sdk-from-configuration.nix { inherit pkgs configuration; };
+              node = import ./pkgs/npm-purifier/sdk-from-configuration.nix { inherit pkgs configuration; };
               command = pkgs.npm-purifier.npm-purifier.override {
                 nodejs = node;
                 hostNode = pkgs.nodejs;

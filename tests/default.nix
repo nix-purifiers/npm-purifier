@@ -216,7 +216,7 @@ in
           ''}
           python ${./npm-projection.py} ${workspaces.projections.npm} \
             ${workspaces.projections.npm.catalog} ${pkgs.nodejs}/bin \
-        ${../nix/lib/npm-bindings.cjs}
+        ${../pkgs/npm-purifier/npm-bindings.cjs}
           touch "$out"
       '';
 
@@ -427,7 +427,7 @@ in
   # a project in a directory of a larger tree.
   publish-build =
     let
-      published = import ../nix/lib/project.nix {
+      published = import ../pkgs/npm-purifier/project.nix {
         inherit pkgs;
         lib = lib // {
           inherit npm-purifier;
@@ -622,7 +622,7 @@ in
         submodules = map (s: s // { rev = "0000000000000000000000000000000000000000"; }) clone.submodules;
       };
       made =
-        (pkgs.callPackage ../nix/lib/git.nix {
+        (pkgs.callPackage ../pkgs/build-npm-project/git.nix {
           inherit purifier;
           git = {
             ${cloneResolved} = tampered;

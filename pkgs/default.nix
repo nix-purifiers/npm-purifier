@@ -39,7 +39,7 @@ let
     node:
     let
       selected = builtins.tryEval (
-        import ../nix/lib/sdk-configuration.nix {
+        import ./npm-purifier/sdk-configuration.nix {
           pkgs = canonicalPkgs;
           inherit node;
         }
@@ -57,10 +57,10 @@ let
 
 in
 {
-  # The builder of npm projects (nix/lib/build-npm-project.nix), a package
+  # The builder of npm projects (pkgs/build-npm-project/default.nix), a package
   # for callPackage in this scope. It reads lockfiles with the library of
   # this flake.
-  buildNpmProject = callPackage (import ../nix/lib/build-npm-project.nix { inherit lib; }) {
+  buildNpmProject = callPackage (import ./build-npm-project/default.nix { inherit lib; }) {
     inherit implementation implementationForSdk;
     implementationPkgs = canonicalPkgs;
     hostNodejs = canonicalPkgs.nodejs;

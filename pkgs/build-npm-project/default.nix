@@ -143,7 +143,7 @@ let
     if (args.node or null) != null then
       args.node
     else if (lock.implementation.configuration or null) != null then
-      import ./sdk-from-configuration.nix {
+      import ../npm-purifier/sdk-from-configuration.nix {
         pkgs = implementationPkgs;
         configuration = lock.implementation.configuration;
       }
@@ -158,7 +158,7 @@ let
       implementationForSdk node
     else
       let
-        expected = import ./sdk-from-configuration.nix {
+        expected = import ../npm-purifier/sdk-from-configuration.nix {
           pkgs = implementationPkgs;
           configuration = configuredSdk;
         };
@@ -319,7 +319,7 @@ let
     ${lib.optionalString (dependencies != [ ]) ''
       export NPM_PURIFIER_INPUT_VIEWS=${inputViews}
       export NPM_PURIFIER_NPM_MODULES=${node}/lib/node_modules/npm/node_modules
-      export NODE_OPTIONS="--require=${./npm-bindings.cjs} ''${NODE_OPTIONS:-}"
+      export NODE_OPTIONS="--require=${../npm-purifier/npm-bindings.cjs} ''${NODE_OPTIONS:-}"
     ''}
     mkdir -p "$HOME" "$npm_config_cache/_cacache"
     cp -rs --no-preserve=mode ${cache.tree}/. "$npm_config_cache/_cacache"
@@ -369,7 +369,7 @@ let
     export npm_config_script_shell=${scriptShell}
     npmMajor="$(npm --version | cut -d. -f1)"
     if [ "$npmMajor" -lt 6 ]; then
-      ${python3}/bin/python ${./legacy-install.py} ${nativeLockName} \
+      ${python3}/bin/python ${../npm/legacy-install.py} ${nativeLockName} \
         ${writeText "npm-legacy-archive-bindings.json" cache.legacyBindings} \
         npm install --cache-min=999999999 ${lib.escapeShellArgs flags}
     else
@@ -684,7 +684,7 @@ assert
           cat >> "$out/environment" <<'NPM_INPUT_ENV'
           export NPM_PURIFIER_INPUT_VIEWS=${inputViews}
           export NPM_PURIFIER_NPM_MODULES=${node}/lib/node_modules/npm/node_modules
-          export NODE_OPTIONS="--require=${./npm-bindings.cjs} ''${NODE_OPTIONS:-}"
+          export NODE_OPTIONS="--require=${../npm-purifier/npm-bindings.cjs} ''${NODE_OPTIONS:-}"
           NPM_INPUT_ENV
           mkdir -p "$out/nix-support"
           printf '%s\n' ${

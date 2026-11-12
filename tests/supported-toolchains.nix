@@ -7,7 +7,7 @@
   scope,
 }:
 let
-  npmSdk = import ../nix/lib/npm-sdk.nix { inherit pkgs; };
+  npmSdk = import ../pkgs/npm-purifier/npm-sdk.nix { inherit pkgs; };
   points = {
     supported-node-22 = {
       node = import ./node-fixture.nix {

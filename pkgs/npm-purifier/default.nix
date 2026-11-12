@@ -25,7 +25,7 @@
 # Every command takes `--lockfile <path>`, the npm-purifier.lock.json to
 # read and write. Without it, the commands take NPM_PURIFIER_LOCKFILE, and
 # without that the one at the project root. The builds
-# evaluate this flake (nix/lib/project.nix), so they use the same builder
+# evaluate this flake (pkgs/npm-purifier/project.nix), so they use the same builder
 # and library as a Nix build of the project does.
 {
   lib,
@@ -209,7 +209,7 @@ implementation.wrap (
       npmMajor="$($npm --version | cut -d. -f1)"
       if [ "$npmMajor" -lt 5 ]; then nativeLock="$root/npm-shrinkwrap.json"; fi
 
-      # The build of the project, as nix/lib/project.nix makes it.
+      # The build of the project, as pkgs/npm-purifier/project.nix makes it.
       project="
         (let
           f =
@@ -223,9 +223,9 @@ implementation.wrap (
             then throw \"npm-purifier: unsupported implementation pin\"
             else ((import ${implementation.sourceModel}).resolve pin.source).flake;
         in
-        import $flake/nix/lib/project.nix {
+        import $flake/pkgs/npm-purifier/project.nix {
           inherit (f) lib;
-          node = ${(import ../../nix/lib/sdk-expression.nix nodejs).shell};
+          node = ${(import ./sdk-expression.nix nodejs).shell};
           pkgs = import f.inputs.nixpkgs {
             system = \"$system\";
             overlays = [ f.overlays.default ];
@@ -299,8 +299,8 @@ implementation.wrap (
       if [ "$command" = lock ] || [ "$command" = update ] || [ "$command" = inputs ] || [ "$command" = prefetch ]; then
         refreshArgs=()
         if [ "$command" = update ]; then refreshArgs=(--refresh); fi
-        python ${../../nix/lib/npm-inputs.py} ${purifier.projectInputsTool} \
-          "$lockfile" "$state" ${../../nix/lib/npm-bindings.cjs} \
+        python ${./npm-inputs.py} ${purifier.projectInputsTool} \
+          "$lockfile" "$state" ${./npm-bindings.cjs} \
           ${nodejs}/lib/node_modules/npm/node_modules "''${inputArgs[@]}" "''${refreshArgs[@]}"
         # shellcheck disable=SC1091
         source "$state/input-environment"
@@ -370,7 +370,7 @@ implementation.wrap (
             projection="$project.packages.\''${builtins.getEnv \"NPM_PURIFIER_PACKAGE\"}.projections.npm"
             repository="$(NPM_PURIFIER_PACKAGE="$name" nix build --impure --no-link --print-out-paths --expr "$projection")"
             catalog="$(NPM_PURIFIER_PACKAGE="$name" nix eval --impure --raw --expr "$projection.catalog")"
-            exec ${hostNode}/bin/node ${../../nix/lib/npm-publish.cjs} "$npm" "$repository" "$catalog" "''${rest[@]}"
+            exec ${hostNode}/bin/node ${./npm-publish.cjs} "$npm" "$repository" "$catalog" "''${rest[@]}"
           fi
           tarball="$(
             NPM_PURIFIER_PACKAGE="$name" nix build --impure --no-link --print-out-paths --expr "
