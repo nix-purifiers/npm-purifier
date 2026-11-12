@@ -179,6 +179,10 @@ implementation.wrap (
       export npm_config_cache="$state/npm"
       # shellcheck disable=SC1091
       source "$state/dependencies/environment"
+      # Fetch-only local caches do not carry project input launcher bindings.
+      # Keep the views generated for this caller npm active for offline commands.
+      # shellcheck disable=SC1091
+      source "$state/input-environment"
       export npm_config_offline=true
       # The audit and the update check contact the registry even when
       # `offline` is set.
