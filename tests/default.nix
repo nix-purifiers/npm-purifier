@@ -138,9 +138,13 @@ in
         inherit pkgs;
         version = "24.22.2";
       };
+      legacy = import ./node-fixture.nix {
+        inherit pkgs;
+        version = "12.22.12";
+      };
     in
     pkgs.runCommand "native-input-bindings" { nativeBuildInputs = [ pkgs.python3 ]; } ''
-      python ${./npm-bindings-runtime.py} ${../nix/lib/npm-bindings.cjs} ${pkgs.nodejs} ${caller}
+      python ${./npm-bindings-runtime.py} ${../nix/lib/npm-bindings.cjs} ${pkgs.nodejs} ${caller} ${lib.optionalString pkgs.stdenv.hostPlatform.isLinux (toString legacy)}
       touch $out
     '';
 

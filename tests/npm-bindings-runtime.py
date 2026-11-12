@@ -61,4 +61,28 @@ with tempfile.TemporaryDirectory() as temporary:
                                 cwd=project, env=env, text=True, capture_output=True)
         assert failed.returncode and 'ENOTCACHED' in failed.stderr, failed.stderr
     assert locks[0] == locks[1]
+    if len(sys.argv) > 4:
+        legacy = Path(sys.argv[4]).resolve()
+        legacy_modules = legacy / 'lib/node_modules/npm/node_modules'
+        legacy_main = legacy / 'lib/node_modules/npm/bin/npm-cli.js'
+        assert not (legacy_modules / '../lib/cli.js').exists()
+        # Verify the actual legacy target and launcher independently; this does
+        # not assert that legacy npm supports modern supplied-input hooks.
+        legacy_proxy = root / 'legacy-npm-proxy.js'
+        legacy_proxy.write_text('require(' + json.dumps(str(legacy_main)) + ');\n')
+        for entry in [legacy_main, legacy_proxy]:
+            version = subprocess.check_output([str(legacy / 'bin/node'), str(entry), '--version'],
+                env=dict(os.environ, NODE_OPTIONS='', npm_config_update_notifier='false'), text=True).strip()
+            assert version.startswith('6.'), version
+        inspect = root / 'legacy-target-inspector.js'
+        inspect.write_text("const assert=require('node:assert/strict');"
+            "const manifest=require(" + json.dumps(str(legacy_modules.parent / 'package.json')) + ");"
+            "assert.equal(manifest.name,'npm');"
+            "assert.equal(globalThis[Symbol.for('nix-purifiers.npm.bindings')],undefined);\n")
+        inspect_proxy = root / 'legacy-target-inspector-proxy.js'
+        inspect_proxy.write_text('require(' + json.dumps(str(inspect)) + ');\n')
+        legacy_env = dict(environment, NPM_PURIFIER_TARGET_NPM_MODULES=str(legacy_modules))
+        for entry in [inspect, inspect_proxy]:
+            subprocess.run([str(inspector / 'bin/node'), str(entry)], env=legacy_env, check=True)
+        print('PASS actual npm6 target/proxy control and nonmatching inspector with optional entry absent')
     print('PASS actual caller npm direct/proxy supplied input, offline CI, runtime import and unprovided-name rejection')

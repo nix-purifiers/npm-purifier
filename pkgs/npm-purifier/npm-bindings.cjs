@@ -130,8 +130,10 @@ module.exports = { activate }
 // The inspector and the caller's npm may have different module trees.
 const targetModules = process.env.NPM_PURIFIER_TARGET_NPM_MODULES || process.env.NPM_PURIFIER_NPM_MODULES
 if (process.env.NPM_PURIFIER_INPUT_VIEWS && targetModules && process.argv[1]) {
-  const entries = new Set(['../bin/npm-cli.js', '../lib/cli.js'].map(name =>
-    fs.realpathSync(path.join(targetModules, name))))
+  const entries = new Set(['../bin/npm-cli.js', '../lib/cli.js']
+    .map(name => path.join(targetModules, name))
+    .filter(file => fs.existsSync(file))
+    .map(file => fs.realpathSync(file)))
   const isEntry = file => typeof file === 'string' && fs.existsSync(file) && entries.has(fs.realpathSync(file))
   const apply = () => activate(JSON.parse(fs.readFileSync(process.env.NPM_PURIFIER_INPUT_VIEWS, 'utf8')), targetModules)
   if (isEntry(process.argv[1])) {
