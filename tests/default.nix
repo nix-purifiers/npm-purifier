@@ -132,6 +132,17 @@ let
       throw "npm-purifier check ${name}: ${message}";
 in
 {
+  local-runtime =
+    pkgs.runCommand "local-runtime"
+      { nativeBuildInputs = [ pkgs.nodejs pkgs.python3 ]; }
+      ''
+        python ${./local-runtime.py} ${pkgs.nodejs} \
+          ${withOverlay.npm-purifier.npm-purifier}/bin/npm-purifier \
+          ${withOverlay.npm-purifier.npm}/bin/npm \
+          ${../nix/lib/local-runtime.py} ${pkgs.runtimeShell}
+        touch $out
+      '';
+
   implementation-context = import ./implementation-context.nix {
     inherit pkgs purifier npm-purifier;
   };
