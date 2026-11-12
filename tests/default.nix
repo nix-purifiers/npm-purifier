@@ -568,6 +568,7 @@ in
     pkgs.runCommand "lock-run-units"
       {
         nativeBuildInputs = [ pkgs.nodejs ];
+        NPM_PURIFIER_NPM = "${pkgs.nodejs}/bin/npm";
         NPM_PURIFIER_NPM_MODULES = "${pkgs.nodejs}/lib/node_modules/npm/node_modules";
       }
       ''

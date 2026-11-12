@@ -19,6 +19,7 @@ const {
   resolveSubmoduleUrl,
   submodulesOf,
   needsPreparation,
+  preparationLock,
   incompleteEntries,
   completeLock,
   withHash,
@@ -194,4 +195,33 @@ test("npm prepares a dependency with a preparing script or workspaces", () => {
   assert.equal(needsPreparation({ scripts: { prepare: "x" } }), true);
   assert.equal(needsPreparation({ scripts: { install: "x" } }), true);
   assert.equal(needsPreparation({ workspaces: ["p/*"] }), true);
+});
+
+test("git preparation can lock and remove a nested read-only checkout", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "readonly-git-test-"));
+  const source = path.join(root, "source");
+  fs.mkdirSync(source);
+  const nested = path.join(source, "nested");
+  fs.mkdirSync(nested);
+  fs.writeFileSync(path.join(nested, "data"), "unchanged");
+  fs.symlinkSync(source, path.join(source, "link"));
+  const manifest = JSON.stringify({name: "readonly-git-fixture", version: "1.0.0",
+    scripts: {prepare: "node -e 'process.exit(99)'"}});
+  fs.writeFileSync(path.join(source, "package.json"), manifest);
+  fs.chmodSync(path.join(nested, "data"), 0o444);
+  fs.chmodSync(nested, 0o555);
+  fs.chmodSync(source, 0o555);
+  try {
+    const result = preparationLock(source);
+    assert.equal(result.inject, true);
+    assert.equal(result.lock.name, "readonly-git-fixture");
+    assert.equal(fs.readFileSync(path.join(source, "package.json"), "utf8"), manifest);
+    assert.equal(fs.statSync(source).mode & 0o777, 0o555);
+    assert.equal(fs.statSync(nested).mode & 0o777, 0o555);
+    assert.equal(fs.existsSync(path.join(source, "package-lock.json")), false);
+  } finally {
+    fs.chmodSync(source, 0o755);
+    fs.chmodSync(nested, 0o755);
+    fs.rmSync(root, {recursive: true, force: true});
+  }
 });
