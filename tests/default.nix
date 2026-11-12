@@ -596,9 +596,66 @@ in
       ''
         cp ${../pkgs/npm-purifier/lock.js} lock.js
         cp ${../pkgs/npm-purifier/lock.test.js} lock.test.js
+        cp ${../pkgs/npm-purifier/registry-recorder.cjs} registry-recorder.cjs
         node --test lock.test.js
         touch $out
       '';
+
+  native-registry-probe-cache =
+    let
+      native = builtins.toFile "probe-package-lock.json" (
+        builtins.toJSON {
+          lockfileVersion = 3;
+          packages = { };
+        }
+      );
+      url = "https://example.invalid/probe.tgz";
+      integrity = builtins.convertHash {
+        hash = builtins.hashString "sha256" url;
+        hashAlgo = "sha256";
+        toHashFormat = "sri";
+      };
+      registry = {
+        "https://example.invalid/probe" = {
+          name = "probe";
+          versions."2.0.0" = {
+            name = "probe";
+            version = "2.0.0";
+            dist = {
+              tarball = url;
+              inherit integrity;
+            };
+          };
+        };
+      };
+      blank = ''
+        {
+          "version": 3,
+          "hash": "",
+          "packageLockSha256": "${builtins.hashFile "sha256" native}",
+          "git": {},
+          "registry": ${builtins.toJSON registry}
+        }
+      '';
+      hash = builtins.convertHash {
+        hash = builtins.hashString "sha256" blank;
+        hashAlgo = "sha256";
+        toHashFormat = "sri";
+      };
+      lockFile = builtins.toFile "probe-npm-purifier.lock.json" (
+        builtins.replaceStrings [ ''"hash": ""'' ] [ ''"hash": "${hash}"'' ] blank
+      );
+      lock = npm-purifier.readLock {
+        src = ./locks/cache-path;
+        packageLock = native;
+        inherit lockFile;
+      };
+    in
+    evalCheck "native-registry-probe-cache" (
+      lock.problems == [ ]
+      && lock.registrySnapshots == registry
+      && map (download: download.url) (downloadsFor host lock) == [ url ]
+    ) "Observed native manifests must supply their integrity-pinned archives and metadata";
 
   published-shrinkwrap-cache =
     let

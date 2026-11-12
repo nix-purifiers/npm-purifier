@@ -322,6 +322,23 @@ let
   git = purifierLock.value.git or { };
   completions = purifierLock.value.completions or { };
   published = purifierLock.value.published or { };
+  registrySnapshots = purifierLock.value.registry or { };
+  registryProbes = lib.listToAttrs (
+    lib.concatMap (
+      document:
+      map (
+        manifest:
+        lib.nameValuePair "node_modules/${manifest.name}@${manifest.version}" (
+          manifest
+          // {
+            resolved = manifest.dist.tarball;
+            integrity = manifest.dist.integrity;
+            hasShrinkwrap = manifest._hasShrinkwrap or false;
+          }
+        )
+      ) (builtins.attrValues document.versions)
+    ) (builtins.attrValues registrySnapshots)
+  );
 
   # A git dependency as git.nix takes it: the entry of the purifier
   # lockfile, with what its `resolved` tells. npm writes `resolved` as
@@ -379,6 +396,14 @@ let
       completed = completions;
     }
   ]
+  ++ lib.optional (registryProbes != { }) {
+    name = "recorded native registry probes";
+    read = {
+      value = registryProbes;
+    };
+    completed = { };
+    allPlatforms = true;
+  }
   ++ prepared
   ++ lib.mapAttrsToList (url: entry: {
     name = "published npm-shrinkwrap.json from ${url}";
@@ -469,6 +494,7 @@ let
 in
 {
   purifier = "npm-purifier";
+  inherit registrySnapshots;
   implementation = purifierLock.value.implementation or null;
   # The same tarball can be installed at several places in the tree; the
   # cache holds it once.

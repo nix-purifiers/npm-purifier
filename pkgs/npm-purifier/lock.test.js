@@ -249,3 +249,53 @@ test("git preparation can lock and remove a nested read-only checkout", () => {
     fs.rmSync(root, {recursive: true, force: true});
   }
 });
+
+test('registry observer preserves native results, arguments, errors and local bindings', async () => {
+  const {install} = require('./registry-recorder.cjs');
+  const result = {name: 'example', version: '1.0.0', dist: {tarball: 'https://registry.npmjs.org/example/-/example-1.0.0.tgz', integrity: 'sha512-YQ=='}};
+  const argument = {};
+  class Fetcher {
+    constructor(local = false) { this.local = local; this.packumentUrl = 'https://registry.npmjs.org/example'; }
+    async packument(value) { assert.equal(value, argument); return {versions: {'1.0.0': result}, 'dist-tags': {latest: '1.0.0'}}; }
+    async manifest(value) {
+      assert.equal(value, argument);
+      if (this.local) return {...result, _resolved: 'file:local'};
+      await this.packument(value);
+      return result;
+    }
+  }
+  const records = [];
+  const restore = install(Fetcher, record => records.push(record));
+  try {
+    assert.equal(await new Fetcher().manifest(argument), result);
+    assert.equal(records.length, 1);
+    assert.deepEqual(records[0].manifest, result);
+    await new Fetcher(true).manifest(argument);
+    assert.equal(records.length, 1);
+  } finally { restore(); }
+});
+
+test('registry observations keep native probes and prune unavailable tags', () => {
+  const {mergeRegistryObservations, registryProbeLock} = require('./lock.js');
+  const manifest = {name: 'tar', version: '7.5.8', dist: {tarball: 'https://registry.npmjs.org/tar/-/tar-7.5.8.tgz', integrity: 'sha512-YQ=='}};
+  const registry = mergeRegistryObservations([{url: 'https://registry.npmjs.org/tar', manifest,
+    tags: {latest: '99.0.0', old: '7.5.8'}}], []);
+  assert.deepEqual(registry['https://registry.npmjs.org/tar']['dist-tags'], {old: '7.5.8'});
+  assert.equal(Object.values(registryProbeLock(registry).packages)[0].resolved, manifest.dist.tarball);
+});
+
+
+test('registry probe reuse is invalidated by workspace manifests and runtime', () => {
+  const {registrySourceHash} = require('./lock.js');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'registry-source-'));
+  try {
+    fs.mkdirSync(path.join(root, 'workspace'));
+    fs.writeFileSync(path.join(root, 'package.json'), '{}');
+    fs.writeFileSync(path.join(root, 'workspace/package.json'), '{}');
+    const lock = {packages: {'': {}, workspace: {}, 'node_modules/example': {version: '1'}}};
+    const before = registrySourceHash(root, lock, {npm: '11', node: '24'});
+    fs.writeFileSync(path.join(root, 'workspace/package.json'), '{"version":"2"}');
+    assert.notEqual(registrySourceHash(root, lock, {npm: '11', node: '24'}), before);
+    assert.notEqual(registrySourceHash(root, lock, {npm: '12', node: '24'}), before);
+  } finally { fs.rmSync(root, {recursive: true, force: true}); }
+});
