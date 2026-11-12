@@ -144,7 +144,7 @@ in
       };
     in
     pkgs.runCommand "native-input-bindings" { nativeBuildInputs = [ pkgs.python3 ]; } ''
-      python ${./npm-bindings-runtime.py} ${../nix/lib/npm-bindings.cjs} ${pkgs.nodejs} ${caller} ${lib.optionalString pkgs.stdenv.hostPlatform.isLinux (toString legacy)}
+      python ${./npm-bindings-runtime.py} ${../pkgs/npm-purifier/npm-bindings.cjs} ${pkgs.nodejs} ${caller} ${lib.optionalString pkgs.stdenv.hostPlatform.isLinux (toString legacy)}
       touch $out
     '';
 
@@ -160,7 +160,7 @@ in
         python ${./local-runtime.py} ${pkgs.nodejs} \
           ${withOverlay.npm-purifier.npm-purifier}/bin/npm-purifier \
           ${withOverlay.npm-purifier.npm}/bin/npm \
-          ${../nix/lib/local-runtime.py} ${pkgs.runtimeShell}
+          ${../pkgs/npm-purifier/local-runtime.py} ${pkgs.runtimeShell}
         touch $out
       '';
 
