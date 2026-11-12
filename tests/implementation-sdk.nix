@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 { pkgs, scope }:
 let
-  node = import ../nix/lib/node-sdk.nix {
+  node = import ../pkgs/npm-purifier/node-sdk.nix {
     inherit pkgs;
     version = if pkgs.stdenv.hostPlatform.isDarwin then "24.22.2" else "8.17.0";
   };
@@ -90,7 +90,9 @@ assert
 assert builtins.all (
   configuration:
   !(builtins.tryEval (
-    builtins.toString (import ../nix/lib/sdk-from-configuration.nix { inherit pkgs configuration; })
+    builtins.toString (
+      import ../pkgs/npm-purifier/sdk-from-configuration.nix { inherit pkgs configuration; }
+    )
   )).success
 ) invalid;
 assert !(builtins.tryEval ((scope.npm.override { nodejs = node; }).drvPath)).success;

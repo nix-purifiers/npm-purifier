@@ -39,7 +39,7 @@ let
   patched = make patchedNodePkgs;
   python = make patchedPythonPkgs;
   foreign = make foreignPathPkgs;
-  node = import ../nix/lib/node-sdk.nix {
+  node = import ../pkgs/npm-purifier/node-sdk.nix {
     inherit pkgs;
     version = if pkgs.stdenv.hostPlatform.isDarwin then "24.22.2" else "8.17.0";
   };

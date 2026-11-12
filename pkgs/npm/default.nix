@@ -183,7 +183,7 @@ implementation.wrap (
       nativeCommand=("$npm")
       npmMajor="$($npm --version | cut -d. -f1)"
       if [ "$npmMajor" -lt 5 ] && [ "$command" = install ]; then
-        nativeCommand=(${python3}/bin/python ${../../nix/lib/legacy-install.py} \
+        nativeCommand=(${python3}/bin/python ${./legacy-install.py} \
           "$nativeLock" "$NPM_PURIFIER_LEGACY_BINDINGS" "$npm")
       fi
       "''${nativeCommand[@]}" "$@" 2> >(tee "$log" >&2) || status=$?

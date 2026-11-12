@@ -151,7 +151,7 @@ def main():
         # but must not manufacture a portable default-SDK pin.
         custom_expression = ('let f = builtins.getFlake ' + bootstrap.nix_string(args.current)
             + '; base = import f.inputs.nixpkgs { system = ' + bootstrap.nix_string(config['system'])
-            + '; }; sdk = import (f.outPath + "/nix/lib/node-sdk.nix") '
+            + '; }; sdk = import (f.outPath + "/pkgs/npm-purifier/node-sdk.nix") '
             + '{ pkgs = base; version = ' + bootstrap.nix_string(sdk_version) + '; }; '
             + 'node = sdk.overrideAttrs (old: { pname = old.pname + "-nonportable"; }); '
             + 'pkgs = import f.inputs.nixpkgs { system = ' + bootstrap.nix_string(config['system'])

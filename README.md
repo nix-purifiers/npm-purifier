@@ -131,7 +131,7 @@ dependencies and with their commands in `bin/`. `release` holds the
 tarballs `npm publish` uploads, and `tests` runs the `test` script in a
 derivation of its own. `fetches` lists every download as an entry of the
 purifier library, for SBOM, license and vulnerability tools.
-`nix/lib/build-npm-project.nix` documents every argument of the builder.
+`pkgs/build-npm-project/default.nix` documents every argument of the builder.
 
 A project whose authors want a flake can package it with one that calls the
 builder directly. The flake can live in the repository of the project or in
