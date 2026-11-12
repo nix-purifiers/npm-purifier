@@ -104,6 +104,9 @@ const incompleteEntries = (lock) =>
     .filter(([key, entry]) => {
       if (key === "" || !key.includes("node_modules/")) return false;
       if (entry.link || entry.inBundle) return false;
+      // Native ci retains failed optional attempts as unpinned placeholders.
+      // They describe no version or archive that capture should resolve.
+      if (entry.optional === true && !('version' in entry) && !('resolved' in entry) && !('integrity' in entry)) return false;
       if (entry.resolved && !/^https?:\/\//.test(entry.resolved)) return false;
       return !entry.resolved || !entry.integrity;
     })

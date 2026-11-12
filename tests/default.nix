@@ -601,6 +601,61 @@ in
         touch $out
       '';
 
+  optional-placeholder-lock =
+    let
+      actual = {
+        version = "1.0.0";
+        resolved = "https://example.invalid/actual.tgz";
+        integrity = builtins.convertHash {
+          hash = builtins.hashString "sha256" "actual";
+          hashAlgo = "sha256";
+          toHashFormat = "sri";
+        };
+      };
+      read =
+        missing:
+        npm-purifier.readLock {
+          src = ./locks/cache-path;
+          lockFile = /does-not-exist-placeholder-sidecar.json;
+          packageLock = builtins.toFile "optional-placeholder-package-lock.json" (
+            builtins.toJSON {
+              lockfileVersion = 3;
+              packages = {
+                "node_modules/actual" = actual;
+                "node_modules/unavailable" = missing;
+              };
+            }
+          );
+        };
+      lock = read { optional = true; };
+    in
+    evalCheck "optional-placeholder-lock"
+      (
+        lock.problems == [ ]
+        && map (entry: entry.url) (downloadsFor host lock) == [ actual.resolved ]
+        && refused (read { })
+        && refused (read {
+          optional = true;
+          version = "1.0.0";
+        })
+        && refused (read {
+          optional = true;
+          integrity = actual.integrity;
+        })
+        && refused (read {
+          optional = true;
+          version = null;
+        })
+        && refused (read {
+          devOptional = true;
+        })
+        && refused (read {
+          optional = true;
+          resolved = "https://example.invalid/missing.tgz";
+        })
+      )
+      "Only unresolved optional placeholders may be omitted; pinned and required entries still require complete archive inputs";
+
   native-registry-probe-cache =
     let
       native = builtins.toFile "probe-package-lock.json" (

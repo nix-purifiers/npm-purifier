@@ -299,3 +299,20 @@ test('registry source guard fingerprints workspace manifests and runtime', () =>
     assert.notEqual(registrySourceHash(root, lock, {npm: '12', node: '24'}), before);
   } finally { fs.rmSync(root, {recursive: true, force: true}); }
 });
+
+test('unresolved optional placeholders are not archive inputs; incomplete pinned packages remain inputs', () => {
+  const lock = {packages: {
+    'node_modules/unavailable': {optional: true},
+    'node_modules/required': {},
+    'node_modules/optional-version': {optional: true, version: '1.0.0'},
+    'node_modules/optional-hash': {optional: true, integrity: 'sha512-example'},
+    'node_modules/optional-null': {optional: true, version: null},
+    'node_modules/dev-optional': {devOptional: true},
+    'node_modules/optional-url': {optional: true, resolved: 'https://example.invalid/optional.tgz'},
+  }};
+  assert.deepEqual(incompleteEntries(lock), ['node_modules/required', 'node_modules/optional-version', 'node_modules/optional-hash', 'node_modules/optional-null', 'node_modules/dev-optional', 'node_modules/optional-url']);
+  const onlyPlaceholder = {packages: {'node_modules/unavailable': {optional: true}}};
+  const before = JSON.stringify(onlyPlaceholder);
+  assert.deepEqual(completeLock(onlyPlaceholder, () => {throw new Error('must not resolve an absent version')}), []);
+  assert.equal(JSON.stringify(onlyPlaceholder), before);
+});
