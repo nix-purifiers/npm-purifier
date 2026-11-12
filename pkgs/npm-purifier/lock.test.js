@@ -285,7 +285,7 @@ test('registry observations keep native probes and prune unavailable tags', () =
 });
 
 
-test('registry probe reuse is invalidated by workspace manifests and runtime', () => {
+test('registry source guard fingerprints workspace manifests and runtime', () => {
   const {registrySourceHash} = require('./lock.js');
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'registry-source-'));
   try {

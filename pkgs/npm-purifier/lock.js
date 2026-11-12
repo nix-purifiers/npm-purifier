@@ -450,7 +450,7 @@ const registryProbeLock = registry => ({packages: Object.fromEntries(
   ])
 )});
 
-const captureRegistry = (root, lock, lockText, previous) => {
+const captureRegistry = (root, lock) => {
   const targetModules = process.env.NPM_PURIFIER_TARGET_NPM_MODULES;
   if (!process.env.NPM_PURIFIER_REGISTRY_RECORDER || !targetModules ||
       !fs.existsSync(path.join(targetModules, '@npmcli/arborist'))) return {};
@@ -459,10 +459,8 @@ const captureRegistry = (root, lock, lockText, previous) => {
     {cwd: root, encoding: 'utf8'}));
   const probeRuntime = {npm: version, node: versions.node, npmModules: targetModules, explicitProjectPrefix: true};
   const sourceHash = registrySourceHash(root, lock, probeRuntime);
-  const lockHash = crypto.createHash('sha256').update(lockText).digest('hex');
-  if (previous.packageLockSha256 === lockHash && previous.registrySourceSha256 === sourceHash) {
-    return {registry: previous.registry || {}, registrySourceSha256: sourceHash};
-  }
+  // A caller can change its executable or effective npm configuration
+  // without changing these project files. Observe every run afresh.
   const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'npm-purifier-registry-'));
   const trace = path.join(temporary, 'observations.jsonl');
   const before = fs.readFileSync(process.env.NPM_PURIFIER_PACKAGE_LOCK || path.join(root, 'package-lock.json'));
@@ -567,7 +565,7 @@ const main = (root, purifierLockPath) => {
   };
   const previousLock = fs.existsSync(purifierLockPath) ? readPrevious() : {};
   const previous = previousLock.git || {};
-  const captured = captureRegistry(root, packageLock, packageLockText, previousLock);
+  const captured = captureRegistry(root, packageLock);
   const registry = captured.registry || {};
   const published = publishedLocks(packageLock, publishedLock);
   publishedLocks(registryProbeLock(registry), publishedLock, published);
