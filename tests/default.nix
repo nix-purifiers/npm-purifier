@@ -600,6 +600,87 @@ in
         touch $out
       '';
 
+  published-shrinkwrap-cache =
+    let
+      entry = version: url: {
+        inherit version;
+        resolved = url;
+        integrity = builtins.convertHash {
+          hash = builtins.hashString "sha256" url;
+          hashAlgo = "sha256";
+          toHashFormat = "sri";
+        };
+      };
+      outer = (entry "1.0.0" "https://example.invalid/outer.tgz") // {
+        hasShrinkwrap = true;
+      };
+      native = builtins.toFile "published-package-lock.json" (
+        builtins.toJSON {
+          lockfileVersion = 3;
+          packages = {
+            "node_modules/outer" = outer;
+            "node_modules/outer/node_modules/leaf" = entry "9.0.0" "https://example.invalid/leaf-9.tgz";
+            "node_modules/leaf" = (entry "2.0.0" "https://example.invalid/leaf-2.tgz") // {
+              optional = true;
+              os = [ "win32" ];
+              cpu = [ "arm64" ];
+            };
+          };
+        }
+      );
+      published = {
+        ${outer.resolved} = {
+          integrity = outer.integrity;
+          packageLock = {
+            lockfileVersion = 3;
+            packages."node_modules/leaf" = (entry "2.0.0" "https://example.invalid/leaf-2.tgz") // {
+              optional = true;
+              os = [ "win32" ];
+              cpu = [ "arm64" ];
+            };
+          };
+        };
+      };
+      blank = ''
+        {
+          "version": 3,
+          "hash": "",
+          "packageLockSha256": "${builtins.hashFile "sha256" native}",
+          "git": {},
+          "published": ${builtins.toJSON published}
+        }
+      '';
+      hash = builtins.convertHash {
+        hash = builtins.hashString "sha256" blank;
+        hashAlgo = "sha256";
+        toHashFormat = "sri";
+      };
+      recorded = builtins.toFile "published-npm-purifier.lock.json" (
+        builtins.replaceStrings [ ''"hash": ""'' ] [ ''"hash": "${hash}"'' ] blank
+      );
+      read =
+        lockFile:
+        npm-purifier.readLock {
+          src = ./locks/cache-path;
+          packageLock = native;
+          inherit lockFile;
+        };
+      lock = read recorded;
+    in
+    evalCheck "published-shrinkwrap-cache"
+      (
+        lock.problems == [ ]
+        &&
+          lib.sort builtins.lessThan (map (download: download.url) (downloadsFor host lock)) == [
+            "https://example.invalid/leaf-2.tgz"
+            "https://example.invalid/leaf-9.tgz"
+            "https://example.invalid/outer.tgz"
+          ]
+        && refused (read /does-not-exist-npm-purifier.lock.json)
+        && refused (read (purifierLockOf native "{}"))
+      )
+      "published shrinkwrap downloads must supplement the root lock, and missing recordings must be refused";
+
   tarball-index-cache =
     pkgs.runCommand "tarball-index-cache"
       {

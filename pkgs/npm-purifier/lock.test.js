@@ -24,7 +24,31 @@ const {
   completeLock,
   withHash,
   implementationPin,
+  publishedLocks,
 } = require("./lock.js");
+
+test("published shrinkwrap discovery follows nested archives without rewriting the consumer lock", () => {
+  const outer = {resolved: 'https://r/outer.tgz', integrity: 'sha512-outer', hasShrinkwrap: true};
+  const nested = {resolved: 'https://r/nested.tgz', integrity: 'sha512-nested', hasShrinkwrap: true};
+  const root = {packages: {'node_modules/outer': outer,
+    'node_modules/outer/node_modules/leaf': {version: '9.0.0'},
+    'node_modules/bundled': {...nested, inBundle: true}}};
+  const before = JSON.stringify(root);
+  const calls = [];
+  const recorded = publishedLocks(root, entry => {
+    calls.push(entry.resolved);
+    return entry === outer ? {packages: {'node_modules/nested': nested,
+      'node_modules/leaf': {version: '2.0.0'}}} : {packages: {'node_modules/outer': outer}};
+  });
+  assert.deepEqual(calls, ['https://r/outer.tgz', 'https://r/nested.tgz']);
+  assert.equal(recorded['https://r/outer.tgz'].packageLock.packages['node_modules/leaf'].version, '2.0.0');
+  assert.equal(JSON.stringify(root), before);
+  assert.throws(() => publishedLocks(root, () => null), /contains no npm-shrinkwrap/);
+  assert.throws(() => publishedLocks({packages: {a: outer, b: {...outer, integrity: 'sha512-other'}}},
+    () => ({packages: {}})), /conflicting integrity/);
+  assert.throws(() => publishedLocks({packages: {a: {...outer, integrity: undefined}}},
+    () => ({packages: {}})), /no integrity/);
+});
 
 const sha = "98e8ff1da1a89f93d1397a24d7413ed15421c139";
 

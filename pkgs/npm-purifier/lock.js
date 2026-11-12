@@ -139,6 +139,52 @@ const registryDist = (name, version) =>
     }),
   );
 
+// Published shrinkwraps can override versions below an installed package.
+// Those downloads need not appear in the consumer's package-lock.json.
+const publishedLocks = (lock, inspect, result = {}) => {
+  const queue = [lock];
+  while (queue.length) {
+    for (const entry of Object.values(packageEntries(queue.shift()))) {
+      if (!entry.hasShrinkwrap || entry.link || entry.inBundle || !/^https?:\/\//.test(entry.resolved || '')) continue;
+      if (result[entry.resolved]) {
+        if (result[entry.resolved].integrity !== entry.integrity) {
+          throw new Error(`published shrinkwrap archive has conflicting integrity: ${entry.resolved}`);
+        }
+        continue;
+      }
+      if (!entry.integrity) throw new Error(`published shrinkwrap archive has no integrity: ${entry.resolved}`);
+      const packageLock = inspect(entry);
+      if (!packageLock) throw new Error(`archive declares hasShrinkwrap but contains no npm-shrinkwrap.json: ${entry.resolved}`);
+      result[entry.resolved] = { integrity: entry.integrity, packageLock };
+      queue.push(packageLock);
+    }
+  }
+  return result;
+};
+
+const publishedLock = (entry) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'npm-purifier-published-'));
+  try {
+    // Use npm's integrity-verifying extractor. Extracting a registry archive
+    // runs no lifecycle scripts, including packages with prepare hooks.
+    const script = `
+      const fs = require('fs'), path = require('path');
+      const pacote = require(path.join(process.argv[1], 'pacote'));
+      pacote.extract(process.argv[2], process.argv[4], {integrity: process.argv[3], ignoreScripts: true})
+        .then(() => {
+          const file = path.join(process.argv[4], 'npm-shrinkwrap.json');
+          process.stdout.write(fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : 'null');
+        }).catch(error => { console.error(error); process.exitCode = 1; });
+    `;
+    const lock = JSON.parse(execFileSync(process.execPath,
+      ['-e', script, modules, entry.resolved, entry.integrity, directory], {encoding: 'utf8', maxBuffer: 64 * 1024 * 1024}));
+    if (lock) completeLock(lock, registryDist);
+    return lock;
+  } finally {
+    fs.rmSync(directory, {recursive: true, force: true});
+  }
+};
+
 // The git dependencies of a lockfile, by their `resolved`.
 const gitDependencies = (lock) => {
   const found = [];
@@ -435,7 +481,9 @@ const main = (root, purifierLockPath) => {
     }
   };
   const previous = fs.existsSync(purifierLockPath) ? readPrevious() : {};
-  const queue = gitDependencies(JSON.parse(packageLockText));
+  const published = publishedLocks(packageLock, publishedLock);
+  const queue = [...gitDependencies(JSON.parse(packageLockText)),
+    ...Object.values(published).flatMap(entry => gitDependencies(entry.packageLock))];
   const git = {};
   while (queue.length > 0) {
     const resolved = queue.shift();
@@ -446,14 +494,18 @@ const main = (root, purifierLockPath) => {
       process.stderr.write(`npm-purifier: locking ${resolved}\n`);
       git[resolved] = lockGit(resolved);
     }
-    if (git[resolved].packageLock) queue.push(...gitDependencies(git[resolved].packageLock));
+    if (git[resolved].packageLock) {
+      queue.push(...gitDependencies(git[resolved].packageLock));
+      publishedLocks(git[resolved].packageLock, publishedLock, published);
+      queue.push(...Object.values(published).flatMap(entry => gitDependencies(entry.packageLock)));
+    }
   }
   const projectInputs = process.env.NPM_PURIFIER_INPUT_PINS
     ? readJson(process.env.NPM_PURIFIER_INPUT_PINS) : [];
   const priorLock = fs.existsSync(purifierLockPath) ? readJson(purifierLockPath) : null;
   const implementation = implementationPin(priorLock, process.env.NPM_PURIFIER_IMPLEMENTATION_CONFIG
     ? readJson(process.env.NPM_PURIFIER_IMPLEMENTATION_CONFIG) : null);
-  if (!priorLock && !implementation && Object.keys(git).length === 0 && Object.keys(completions).length === 0 && projectInputs.length === 0) {
+  if (!priorLock && !implementation && Object.keys(git).length === 0 && Object.keys(completions).length === 0 && projectInputs.length === 0 && Object.keys(published).length === 0) {
     fs.rmSync(purifierLockPath, { force: true });
     process.stderr.write(`npm-purifier: ${path.basename(packageLockPath)} records every download; no npm-purifier.lock.json needed\n`);
     return;
@@ -465,6 +517,7 @@ const main = (root, purifierLockPath) => {
     ...(implementation ? { implementation } : {}),
     packageLockSha256: crypto.createHash("sha256").update(packageLockText).digest("hex"),
     git: sorted,
+    ...(Object.keys(published).length > 0 ? { published: Object.fromEntries(Object.entries(published).sort(([a], [b]) => a.localeCompare(b))) } : {}),
     ...(projectInputs.length > 0 ? { projectInputs } : {}),
     ...(Object.keys(completions).length > 0 ? { completions } : {}),
   };
@@ -492,6 +545,7 @@ module.exports = {
   submodulesOf,
   needsPreparation,
   preparationLock,
+  publishedLocks,
   incompleteEntries,
   completeLock,
   packageEntries,
