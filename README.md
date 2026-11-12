@@ -7,6 +7,11 @@ optional next step.
 
 ## Quickstart
 
+Keep the project's existing Node.js and native npm on `PATH`. The interactive
+commands use that runtime, including installations outside the Nix store;
+the toolchain shell supplies the purifier and wrapper. Pure Nix builders
+select their immutable SDK separately.
+
 From the project root:
 
 ```zsh

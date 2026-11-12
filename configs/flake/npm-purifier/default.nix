@@ -29,8 +29,8 @@
 
   # `nix run github:nix-purifiers/npm-purifier -- lock` runs the command
   # `npm-purifier`. `nix develop github:nix-purifiers/npm-purifier` gives a
-  # shell with that command, the `npm` wrapper of the everyday loop, and
-  # Node.js.
+  # shell with that command and the `npm` wrapper of the everyday loop.
+  # The caller supplies the project Node.js and native npm.
   perSystem =
     { config, pkgs, ... }:
     {
@@ -42,14 +42,12 @@
         paths = [
           (pkgs.lib.hiPrio config.packages.npm)
           config.packages.npm-purifier
-          pkgs.nodejs
         ];
       };
       devShells.default = pkgs.mkShell {
         packages = [
           config.packages.npm
           config.packages.npm-purifier
-          pkgs.nodejs
         ];
       };
     };
