@@ -219,6 +219,7 @@ in
       '';
   current-node-tools = pkgs.buildEnv {
     name = "npm-current-node-tools";
+    postBuild = ''ln -s ${pkgs.nodejs} "$out/native-runtime"'';
     paths = [
       (lib.lowPrio pkgs.nodejs)
       withOverlay.npm-purifier.npm

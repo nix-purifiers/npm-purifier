@@ -21,7 +21,9 @@ point = sys.argv[7]
 source = Path(__file__).resolve().parent.parent
 source_ref = 'git+' + source.as_uri() + '?rev=' + subprocess.check_output(['git','-C',str(source),'rev-parse','HEAD'],text=True).strip()
 lock_name = 'npm-shrinkwrap.json' if fixture.startswith('shrinkwrap-') else 'package-lock.json'
-env = dict(os.environ, PATH=str(tools / 'bin') + os.pathsep + os.environ['PATH'])
+native_sdk = tools / 'native-runtime'
+assert (native_sdk / 'bin/npm').is_file(), 'selected SDK fixture must expose its native npm'
+env = dict(os.environ, PATH=str(tools / 'bin') + os.pathsep + str(native_sdk / 'bin') + os.pathsep + os.environ['PATH'])
 
 
 def run(*args, cwd):
