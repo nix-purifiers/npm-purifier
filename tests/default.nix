@@ -132,6 +132,18 @@ let
       throw "npm-purifier check ${name}: ${message}";
 in
 {
+  native-input-bindings =
+    let
+      caller = import ./node-fixture.nix {
+        inherit pkgs;
+        version = "24.22.2";
+      };
+    in
+    pkgs.runCommand "native-input-bindings" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+      python ${./npm-bindings-runtime.py} ${../nix/lib/npm-bindings.cjs} ${pkgs.nodejs} ${caller}
+      touch $out
+    '';
+
   local-runtime =
     pkgs.runCommand "local-runtime"
       {

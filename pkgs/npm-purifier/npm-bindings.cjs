@@ -127,6 +127,30 @@ function activate (configuration, modules) {
   }
 }
 module.exports = { activate }
-if (process.env.NPM_PURIFIER_INPUT_VIEWS && process.env.NPM_PURIFIER_NPM_MODULES && process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(path.join(process.env.NPM_PURIFIER_NPM_MODULES, '../bin/npm-cli.js'))) {
-  activate(JSON.parse(fs.readFileSync(process.env.NPM_PURIFIER_INPUT_VIEWS, 'utf8')), process.env.NPM_PURIFIER_NPM_MODULES)
+// The inspector and the caller's npm may have different module trees.
+const targetModules = process.env.NPM_PURIFIER_TARGET_NPM_MODULES || process.env.NPM_PURIFIER_NPM_MODULES
+if (process.env.NPM_PURIFIER_INPUT_VIEWS && targetModules && process.argv[1]) {
+  const entries = new Set(['../bin/npm-cli.js', '../lib/cli.js'].map(name =>
+    fs.realpathSync(path.join(targetModules, name))))
+  const isEntry = file => typeof file === 'string' && fs.existsSync(file) && entries.has(fs.realpathSync(file))
+  const apply = () => activate(JSON.parse(fs.readFileSync(process.env.NPM_PURIFIER_INPUT_VIEWS, 'utf8')), targetModules)
+  if (isEntry(process.argv[1])) {
+    apply()
+  } else {
+    // Caller-owned JS launchers can require npm instead of executing its entry.
+    // Activate only when that native entry loads, leaving the inspector alone.
+    const Module = require('node:module')
+    const original = Module._load
+    let applied = false
+    const loadWithInputs = function (request, parent, isMain) {
+      const resolved = Module._resolveFilename(request, parent, isMain)
+      if (!applied && isEntry(resolved)) {
+        applied = true
+        if (Module._load === loadWithInputs) Module._load = original
+        apply()
+      }
+      return original.apply(this, arguments)
+    }
+    Module._load = loadWithInputs
+  }
 }

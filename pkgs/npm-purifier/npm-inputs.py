@@ -29,6 +29,7 @@ if inputs:
         'export NPM_PURIFIER_INPUT_VIEWS=' + shlex.quote(str(args.state/'input-views.json')),
         'export NPM_PURIFIER_INPUT_PINS=' + shlex.quote(str(args.state/'input-pins.json')),
         'export NPM_PURIFIER_NPM_MODULES=' + shlex.quote(args.modules),
+        'export NPM_PURIFIER_TARGET_NPM_MODULES=' + shlex.quote(args.modules),
         'export NODE_OPTIONS=' + shlex.quote('--require='+args.bindings) + ' "${NODE_OPTIONS:-}"',
     ]
 # Preserve existing node options as one shell value.
