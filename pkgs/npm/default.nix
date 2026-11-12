@@ -176,9 +176,9 @@ implementation.wrap (
         (cd "$root" && "$purifier" prefetch "''${lockfileArgs[@]}")
       fi
 
+      export npm_config_cache="$state/npm"
       # shellcheck disable=SC1091
       source "$state/dependencies/environment"
-      export npm_config_cache="$state/npm"
       export npm_config_offline=true
       # The audit and the update check contact the registry even when
       # `offline` is set.

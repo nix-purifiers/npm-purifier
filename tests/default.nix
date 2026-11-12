@@ -134,7 +134,12 @@ in
 {
   local-runtime =
     pkgs.runCommand "local-runtime"
-      { nativeBuildInputs = [ pkgs.nodejs pkgs.python3 ]; }
+      {
+        nativeBuildInputs = [
+          pkgs.nodejs
+          pkgs.python3
+        ];
+      }
       ''
         python ${./local-runtime.py} ${pkgs.nodejs} \
           ${withOverlay.npm-purifier.npm-purifier}/bin/npm-purifier \
@@ -575,6 +580,34 @@ in
         cp ${../pkgs/npm-purifier/lock.js} lock.js
         cp ${../pkgs/npm-purifier/lock.test.js} lock.test.js
         node --test lock.test.js
+        touch $out
+      '';
+
+  tarball-index-cache =
+    pkgs.runCommand "tarball-index-cache"
+      {
+        nativeBuildInputs = [
+          pkgs.nodejs
+          pkgs.python3
+        ];
+        NPM_PURIFIER_NPM_MODULES = "${pkgs.nodejs}/lib/node_modules/npm/node_modules";
+      }
+      ''
+        python ${./tarball-index.py} ${../pkgs/build-npm-project/seed-tarball-index.py}
+        touch $out
+      '';
+
+  registry-metadata-cache =
+    pkgs.runCommand "registry-metadata-cache"
+      {
+        nativeBuildInputs = [
+          pkgs.nodejs
+          pkgs.python3
+        ];
+        NPM_PURIFIER_NPM_MODULES = "${pkgs.nodejs}/lib/node_modules/npm/node_modules";
+      }
+      ''
+        python ${./registry-metadata.py} ${../pkgs/build-npm-project/seed-tarball-index.py} ${../pkgs/build-npm-project/registry-metadata.cjs}
         touch $out
       '';
 

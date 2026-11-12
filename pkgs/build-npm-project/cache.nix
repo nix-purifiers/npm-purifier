@@ -19,6 +19,9 @@
   # them out with.
   runCommand,
   fetchurl,
+  python3,
+  nodejs,
+  writeText,
   # The shared purifier library.
   purifier,
   # The lock in memory of the project (read-lock.nix).
@@ -48,15 +51,53 @@ let
     inherit purifier fetchers;
     checkouts = gitCheckouts;
   };
+  archiveUses = lib.concatMap (
+    entry:
+    map (url: {
+      inherit url;
+      inherit (entry) hash path;
+    }) (lib.unique ([ entry.url ] ++ (entry.mirrors or [ ])))
+  ) (builtins.filter (entry: !(entry ? git)) entries);
+  tarballCatalog = writeText "npm-purifier-tarball-index.json" (
+    builtins.toJSON (
+      map (entry: {
+        url = entry.url;
+        integrity = entry.hash;
+        path = toString (tarballs + "/${entry.path}");
+      }) archiveUses
+    )
+  );
+  registryMetadata =
+    runCommand "npm-purifier-registry-metadata"
+      {
+        NPM_PURIFIER_NPM_MODULES = "${nodejs}/lib/node_modules/npm/node_modules";
+      }
+      ''
+        ${nodejs}/bin/node ${./registry-metadata.cjs} \
+          ${
+            writeText "npm-purifier-registry-manifests.json" (builtins.toJSON (lock.registryMetadata or [ ]))
+          } "$out" ${tarballCatalog} ${
+            writeText "npm-purifier-registry-snapshots.json" (builtins.toJSON (lock.registrySnapshots or { }))
+          }
+      '';
 in
 {
-  inherit (git) environment needsGit repositories;
+  inherit (git) needsGit repositories;
+  environment = git.environment + ''
+    ${python3}/bin/python ${./seed-tarball-index.py} ${tarballCatalog} \
+      "$npm_config_cache/_cacache" "$(${nodejs}/bin/npm config get registry)"
+    ${python3}/bin/python ${./seed-tarball-index.py} ${registryMetadata}/catalog.json \
+      "$npm_config_cache/_cacache" "$(${nodejs}/bin/npm config get registry)"
+    if [ -d "$npm_config_cache/_cacache/index-v5" ] && [ ! -e "$npm_config_cache/index-v5" ] && [ ! -L "$npm_config_cache/index-v5" ]; then
+      ln -s _cacache/index-v5 "$npm_config_cache/index-v5"
+    fi
+  '';
   legacyBindings = builtins.toJSON (
     lib.listToAttrs (
       map (entry: {
         name = entry.url;
         value = toString (tarballs + "/${entry.path}");
-      }) (builtins.filter (entry: !(entry ? git)) entries)
+      }) archiveUses
     )
   );
   tree = symlinkJoin {
@@ -64,6 +105,7 @@ in
     paths = [
       tarballs
       git.cache
+      (registryMetadata + "/cache")
     ];
   };
 }

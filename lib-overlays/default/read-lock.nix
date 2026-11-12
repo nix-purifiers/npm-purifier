@@ -417,6 +417,58 @@ in
   entries =
     builtins.attrValues (lib.listToAttrs (map (e: lib.nameValuePair e.path e) (valuesOf tarballs)))
     ++ valuesOf gitDependencies;
+  # npm ci can consult packuments while rebuilding workspace peer contexts.
+  # Supply precisely the manifests already described by these native locks;
+  # Additional versions come only from recorded native resolver probes.
+  registryMetadata = lib.concatMap (
+    set:
+    let
+      completedPackages = lib.mapAttrs (key: entry: entry // (set.completed.${key} or { })) (
+        set.read.value or { }
+      );
+    in
+    lib.mapAttrsToList
+      (
+        key: raw:
+        let
+          entry = raw // (set.completed.${key} or { });
+          name = entry.name or (lib.last (lib.splitString "node_modules/" key));
+        in
+        builtins.removeAttrs entry [
+          "resolved"
+          "integrity"
+          "dev"
+          "optional"
+          "devOptional"
+          "peer"
+          "inBundle"
+          "link"
+          "hasShrinkwrap"
+          "requires"
+        ]
+        // {
+          inherit name;
+          _hasShrinkwrap = entry.hasShrinkwrap or false;
+          dist = {
+            tarball = entry.resolved;
+          }
+          // lib.optionalAttrs (entry ? integrity) { integrity = entry.integrity; };
+        }
+        // lib.optionalAttrs (entry ? requires || entry ? dependencies) {
+          dependencies = lib.mapAttrs (
+            _: value: if builtins.isAttrs value then value.version or "*" else value
+          ) (entry.requires or entry.dependencies);
+        }
+      )
+      (
+        lib.filterAttrs (
+          _: entry:
+          entry ? version
+          && builtins.isString (entry.resolved or null)
+          && (lib.hasPrefix "https://" entry.resolved || lib.hasPrefix "http://" entry.resolved)
+        ) (installed completedPackages)
+      )
+  ) packageSets;
   outputs = lib.listToAttrs (
     lib.mapAttrsToList (
       key: entry:
