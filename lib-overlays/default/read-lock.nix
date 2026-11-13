@@ -249,6 +249,7 @@ let
       )
       && !(entry.link or false)
       && !(entry.inBundle or false)
+      && !((entry.optional or false) && !(entry ? version) && !(entry ? resolved) && !(entry ? integrity))
       && !lib.hasPrefix "file:" (entry.resolved or "")
     ) ps;
 
