@@ -294,16 +294,19 @@ let
   # npm-purifier.lock.json, read when package-lock.json needs it. Without
   # the file, an incomplete entry names its own problem.
   hasGit = gitOf packages != [ ];
+  hasPublished = builtins.any (entry: entry.hasShrinkwrap or false) (
+    builtins.attrValues (installed packages)
+  );
   purifierLock =
     let
       read = readLockFile lockFile "run `npm-purifier lock` to write it again";
       stored = read.value.hash or "";
     in
-    if !hasGit && incomplete == { } && !builtins.pathExists lockFile then
+    if !hasGit && !hasPublished && incomplete == { } && !builtins.pathExists lockFile then
       { value = { }; }
     else if !builtins.pathExists lockFile then
-      if hasGit then
-        problemOf "${toString packageLock} has git dependencies, and ${lockName} does not exist; run `npm-purifier lock`."
+      if hasGit || hasPublished then
+        problemOf "${toString packageLock} has git dependencies or published shrinkwraps, and ${lockName} does not exist; run `npm-purifier lock`."
       else
         { value = { }; }
     else if read ? problem then
@@ -318,6 +321,24 @@ let
       { inherit (read) value; };
   git = purifierLock.value.git or { };
   completions = purifierLock.value.completions or { };
+  published = purifierLock.value.published or { };
+  registrySnapshots = purifierLock.value.registry or { };
+  registryProbes = lib.listToAttrs (
+    lib.concatMap (
+      document:
+      map (
+        manifest:
+        lib.nameValuePair "node_modules/${manifest.name}@${manifest.version}" (
+          manifest
+          // {
+            resolved = manifest.dist.tarball;
+            integrity = manifest.dist.integrity;
+            hasShrinkwrap = manifest._hasShrinkwrap or false;
+          }
+        )
+      ) (builtins.attrValues document.versions)
+    ) (builtins.attrValues registrySnapshots)
+  );
 
   # A git dependency as git.nix takes it: the entry of the purifier
   # lockfile, with what its `resolved` tells. npm writes `resolved` as
@@ -375,10 +396,47 @@ let
       completed = completions;
     }
   ]
-  ++ prepared;
+  ++ lib.optional (registryProbes != { }) {
+    name = "recorded native registry probes";
+    read = {
+      value = registryProbes;
+    };
+    completed = { };
+    allPlatforms = true;
+  }
+  ++ prepared
+  ++ lib.mapAttrsToList (url: entry: {
+    name = "published npm-shrinkwrap.json from ${url}";
+    read = packagesOf url { value = entry.packageLock; };
+    completed = { };
+    allPlatforms = true;
+  }) published;
+
+  missingPublished = lib.concatMap (
+    set:
+    lib.mapAttrsToList
+      (
+        _: entry:
+        problemOf "${entry.resolved} declares a published shrinkwrap missing from ${lockName}; run `npm-purifier lock`."
+      )
+      (
+        lib.filterAttrs (
+          _: entry: (entry.hasShrinkwrap or false) && entry ? resolved && !(published ? ${entry.resolved})
+        ) (installed (set.read.value or { }))
+      )
+  ) packageSets;
 
   tarballs = lib.concatMap (
-    set: tarballsOf set.name set.completed (set.read.value or { })
+    set:
+    # npm may unpack optional foreign-platform packages from a published
+    # shrinkwrap even though it omits them from a regular consumer lock.
+    # Keep their archives available and let the selected npm make that choice.
+    tarballsOf set.name set.completed (
+      if set.allPlatforms or false then
+        lib.mapAttrs (_: entry: builtins.removeAttrs entry platformFilters) (set.read.value or { })
+      else
+        set.read.value or { }
+    )
   ) packageSets;
   # With no usable npm-purifier.lock.json, every git dependency would
   # repeat its problem.
@@ -390,6 +448,31 @@ let
 
   problemsOf = results: map (r: r.problem) (builtins.filter (r: r ? problem) results);
   valuesOf = results: map (r: r.value) (builtins.filter (r: r ? value) results);
+
+  # Content-addressed archives may occur in several locks, with different
+  # platform filters or URLs. Cache availability is the union of those uses.
+  uniqueTarballs = lib.foldl' (
+    collected: entry:
+    let
+      previous = collected.${entry.path} or null;
+      merged =
+        if previous == null then
+          entry
+        else
+          (builtins.removeAttrs previous (platformFilters ++ [ "systems" ]))
+          // lib.optionalAttrs (previous ? systems && entry ? systems) {
+            systems = lib.unique (previous.systems ++ entry.systems);
+          }
+          // {
+            mirrors = lib.unique (
+              (previous.mirrors or [ ])
+              ++ (entry.mirrors or [ ])
+              ++ lib.optional (entry.url != previous.url) entry.url
+            );
+          };
+    in
+    collected // { ${entry.path} = merged; }
+  ) { } (valuesOf tarballs);
 
   binOf =
     entry:
@@ -411,12 +494,11 @@ let
 in
 {
   purifier = "npm-purifier";
+  inherit registrySnapshots;
   implementation = purifierLock.value.implementation or null;
   # The same tarball can be installed at several places in the tree; the
   # cache holds it once.
-  entries =
-    builtins.attrValues (lib.listToAttrs (map (e: lib.nameValuePair e.path e) (valuesOf tarballs)))
-    ++ valuesOf gitDependencies;
+  entries = builtins.attrValues uniqueTarballs ++ valuesOf gitDependencies;
   # npm ci can consult packuments while rebuilding workspace peer contexts.
   # Supply precisely the manifests already described by these native locks;
   # Additional versions come only from recorded native resolver probes.
@@ -481,6 +563,10 @@ in
     ) own
   );
   problems = problemsOf (
-    map (set: set.read) packageSets ++ [ purifierLock ] ++ tarballs ++ gitDependencies
+    map (set: set.read) packageSets
+    ++ [ purifierLock ]
+    ++ tarballs
+    ++ gitDependencies
+    ++ missingPublished
   );
 }

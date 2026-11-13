@@ -139,6 +139,52 @@ const registryDist = (name, version) =>
     }),
   );
 
+// Published shrinkwraps can override versions below an installed package.
+// Those downloads need not appear in the consumer's package-lock.json.
+const publishedLocks = (lock, inspect, result = {}) => {
+  const queue = [lock];
+  while (queue.length) {
+    for (const entry of Object.values(packageEntries(queue.shift()))) {
+      if (!entry.hasShrinkwrap || entry.link || entry.inBundle || !/^https?:\/\//.test(entry.resolved || '')) continue;
+      if (result[entry.resolved]) {
+        if (result[entry.resolved].integrity !== entry.integrity) {
+          throw new Error(`published shrinkwrap archive has conflicting integrity: ${entry.resolved}`);
+        }
+        continue;
+      }
+      if (!entry.integrity) throw new Error(`published shrinkwrap archive has no integrity: ${entry.resolved}`);
+      const packageLock = inspect(entry);
+      if (!packageLock) throw new Error(`archive declares hasShrinkwrap but contains no npm-shrinkwrap.json: ${entry.resolved}`);
+      result[entry.resolved] = { integrity: entry.integrity, packageLock };
+      queue.push(packageLock);
+    }
+  }
+  return result;
+};
+
+const publishedLock = (entry) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'npm-purifier-published-'));
+  try {
+    // Use npm's integrity-verifying extractor. Extracting a registry archive
+    // runs no lifecycle scripts, including packages with prepare hooks.
+    const script = `
+      const fs = require('fs'), path = require('path');
+      const pacote = require(path.join(process.argv[1], 'pacote'));
+      pacote.extract(process.argv[2], process.argv[4], {integrity: process.argv[3], ignoreScripts: true})
+        .then(() => {
+          const file = path.join(process.argv[4], 'npm-shrinkwrap.json');
+          process.stdout.write(fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : 'null');
+        }).catch(error => { console.error(error); process.exitCode = 1; });
+    `;
+    const lock = JSON.parse(execFileSync(process.execPath,
+      ['-e', script, modules, entry.resolved, entry.integrity, directory], {encoding: 'utf8', maxBuffer: 64 * 1024 * 1024}));
+    if (lock) completeLock(lock, registryDist);
+    return lock;
+  } finally {
+    fs.rmSync(directory, {recursive: true, force: true});
+  }
+};
+
 // The git dependencies of a lockfile, by their `resolved`.
 const gitDependencies = (lock) => {
   const found = [];
@@ -355,6 +401,89 @@ const lockGit = (resolved) => {
 // The format of npm-purifier.lock.json that this run writes.
 const formatVersion = 3;
 
+const registrySourceHash = (root, lock, runtime) => {
+  const hash = crypto.createHash('sha256').update(JSON.stringify(runtime));
+  const files = new Set(['package.json', '.npmrc']);
+  for (const key of Object.keys(packageEntries(lock))) {
+    if (key && !key.includes('node_modules/')) files.add(path.join(key, 'package.json'));
+  }
+  for (const file of [...files].sort()) {
+    hash.update(file + '\0');
+    if (fs.existsSync(path.join(root, file))) hash.update(fs.readFileSync(path.join(root, file)));
+    hash.update('\0');
+  }
+  return hash.digest('hex');
+};
+
+const mergeRegistryObservations = (records, knownLocks) => {
+  const documents = {};
+  const known = new Map();
+  for (const lock of knownLocks) {
+    for (const [key, entry] of Object.entries(packageEntries(lock))) {
+      const name = nameOf(key, entry);
+      if (!known.has(name)) known.set(name, new Set());
+      known.get(name).add(entry.version);
+    }
+  }
+  for (const record of records) {
+    const manifest = record.manifest;
+    const document = documents[record.url] ||= {name: manifest.name, versions: {}, 'dist-tags': {}, time: {}};
+    document.versions[manifest.version] = manifest;
+    Object.assign(document['dist-tags'], record.tags);
+    if (record.time) document.time[manifest.version] = record.time;
+    if (!known.has(manifest.name)) known.set(manifest.name, new Set());
+    known.get(manifest.name).add(manifest.version);
+  }
+  for (const document of Object.values(documents)) {
+    document['dist-tags'] = Object.fromEntries(Object.entries(document['dist-tags'])
+      .filter(([, version]) => known.get(document.name).has(version)).sort(([a], [b]) => a.localeCompare(b)));
+    document.versions = Object.fromEntries(Object.entries(document.versions).sort(([a], [b]) => a.localeCompare(b)));
+  }
+  return Object.fromEntries(Object.entries(documents).sort(([a], [b]) => a.localeCompare(b)));
+};
+
+const registryProbeLock = registry => ({packages: Object.fromEntries(
+  Object.values(registry).flatMap(document => Object.values(document.versions)).map(manifest => [
+    'node_modules/' + manifest.name + '@' + manifest.version,
+    {...manifest, resolved: manifest.dist.tarball, integrity: manifest.dist.integrity,
+      hasShrinkwrap: manifest._hasShrinkwrap || false},
+  ])
+)});
+
+const captureRegistry = (root, lock) => {
+  const targetModules = process.env.NPM_PURIFIER_TARGET_NPM_MODULES;
+  if (!process.env.NPM_PURIFIER_REGISTRY_RECORDER || !targetModules ||
+      !fs.existsSync(path.join(targetModules, '@npmcli/arborist'))) return {};
+  const version = execFileSync(npm, ['--version'], {encoding: 'utf8'}).trim();
+  const versions = JSON.parse(execFileSync(npm, ['version', '--json', '--workspaces=false'],
+    {cwd: root, encoding: 'utf8'}));
+  const probeRuntime = {npm: version, node: versions.node, npmModules: targetModules, explicitProjectPrefix: true};
+  const sourceHash = registrySourceHash(root, lock, probeRuntime);
+  // A caller can change its executable or effective npm configuration
+  // without changing these project files. Observe every run afresh.
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'npm-purifier-registry-'));
+  const trace = path.join(temporary, 'observations.jsonl');
+  const before = fs.readFileSync(process.env.NPM_PURIFIER_PACKAGE_LOCK || path.join(root, 'package-lock.json'));
+  try {
+    execFileSync(npm, ['--prefix', root, 'ci', '--dry-run', '--ignore-scripts', '--no-audit', '--no-fund', '--loglevel=error',
+      '--cache', path.join(temporary, 'cache')], {
+      cwd: root, stdio: ['ignore', 'ignore', 'inherit'], env: {...process.env,
+        NODE_OPTIONS: (process.env.NODE_OPTIONS || '') + ' --require=' + JSON.stringify(process.env.NPM_PURIFIER_REGISTRY_RECORDER),
+        NPM_PURIFIER_REGISTRY_TRACE: trace, npm_config_update_notifier: 'false'},
+    });
+    if (!before.equals(fs.readFileSync(process.env.NPM_PURIFIER_PACKAGE_LOCK || path.join(root, 'package-lock.json')))) {
+      throw new Error('native npm ci --dry-run changed the native lockfile');
+    }
+    if (registrySourceHash(root, lock, probeRuntime) !== sourceHash) {
+      throw new Error('native npm ci --dry-run changed a project manifest or npm configuration');
+    }
+    const records = fs.existsSync(trace) ? fs.readFileSync(trace, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse) : [];
+    return {registry: mergeRegistryObservations(records, [lock]), registrySourceSha256: sourceHash};
+  } finally {
+    fs.rmSync(temporary, {recursive: true, force: true});
+  }
+};
+
 // The text of a lockfile whose top-level `hash` is empty, with that hash
 // filled in.
 const withHash = (text) => {
@@ -429,13 +558,19 @@ const main = (root, purifierLockPath) => {
   // it again.
   const readPrevious = () => {
     try {
-      return readJson(purifierLockPath).git || {};
+      return readJson(purifierLockPath);
     } catch {
       return {};
     }
   };
-  const previous = fs.existsSync(purifierLockPath) ? readPrevious() : {};
-  const queue = gitDependencies(JSON.parse(packageLockText));
+  const previousLock = fs.existsSync(purifierLockPath) ? readPrevious() : {};
+  const previous = previousLock.git || {};
+  const captured = captureRegistry(root, packageLock);
+  const registry = captured.registry || {};
+  const published = publishedLocks(packageLock, publishedLock);
+  publishedLocks(registryProbeLock(registry), publishedLock, published);
+  const queue = [...gitDependencies(JSON.parse(packageLockText)),
+    ...Object.values(published).flatMap(entry => gitDependencies(entry.packageLock))];
   const git = {};
   while (queue.length > 0) {
     const resolved = queue.shift();
@@ -446,14 +581,18 @@ const main = (root, purifierLockPath) => {
       process.stderr.write(`npm-purifier: locking ${resolved}\n`);
       git[resolved] = lockGit(resolved);
     }
-    if (git[resolved].packageLock) queue.push(...gitDependencies(git[resolved].packageLock));
+    if (git[resolved].packageLock) {
+      queue.push(...gitDependencies(git[resolved].packageLock));
+      publishedLocks(git[resolved].packageLock, publishedLock, published);
+      queue.push(...Object.values(published).flatMap(entry => gitDependencies(entry.packageLock)));
+    }
   }
   const projectInputs = process.env.NPM_PURIFIER_INPUT_PINS
     ? readJson(process.env.NPM_PURIFIER_INPUT_PINS) : [];
   const priorLock = fs.existsSync(purifierLockPath) ? readJson(purifierLockPath) : null;
   const implementation = implementationPin(priorLock, process.env.NPM_PURIFIER_IMPLEMENTATION_CONFIG
     ? readJson(process.env.NPM_PURIFIER_IMPLEMENTATION_CONFIG) : null);
-  if (!priorLock && !implementation && Object.keys(git).length === 0 && Object.keys(completions).length === 0 && projectInputs.length === 0) {
+  if (!priorLock && !implementation && Object.keys(git).length === 0 && Object.keys(completions).length === 0 && projectInputs.length === 0 && Object.keys(published).length === 0 && Object.keys(registry).length === 0) {
     fs.rmSync(purifierLockPath, { force: true });
     process.stderr.write(`npm-purifier: ${path.basename(packageLockPath)} records every download; no npm-purifier.lock.json needed\n`);
     return;
@@ -465,6 +604,8 @@ const main = (root, purifierLockPath) => {
     ...(implementation ? { implementation } : {}),
     packageLockSha256: crypto.createHash("sha256").update(packageLockText).digest("hex"),
     git: sorted,
+    ...(Object.keys(registry).length > 0 ? captured : {}),
+    ...(Object.keys(published).length > 0 ? { published: Object.fromEntries(Object.entries(published).sort(([a], [b]) => a.localeCompare(b))) } : {}),
     ...(projectInputs.length > 0 ? { projectInputs } : {}),
     ...(Object.keys(completions).length > 0 ? { completions } : {}),
   };
@@ -492,6 +633,10 @@ module.exports = {
   submodulesOf,
   needsPreparation,
   preparationLock,
+  publishedLocks,
+  registrySourceHash,
+  mergeRegistryObservations,
+  registryProbeLock,
   incompleteEntries,
   completeLock,
   packageEntries,

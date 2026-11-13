@@ -340,6 +340,8 @@ implementation.wrap (
           withToolLockfile env \
             NPM_PURIFIER_NPM_MODULES=${hostNode}/lib/node_modules/npm/node_modules \
             NPM_PURIFIER_NPM="$npm" \
+            NPM_PURIFIER_TARGET_NPM_MODULES="$nativeNpmModules" \
+            NPM_PURIFIER_REGISTRY_RECORDER=${./registry-recorder.cjs} \
             ${hostNode}/bin/node ${./lock.js} "$root" "$lockfile"
           ;;
         update)
@@ -347,6 +349,8 @@ implementation.wrap (
             (cd "$root" && "$npm" update --package-lock-only --ignore-scripts --no-audit --no-fund "''${rest[@]}")
             NPM_PURIFIER_NPM_MODULES=${hostNode}/lib/node_modules/npm/node_modules \
               NPM_PURIFIER_NPM="$npm" \
+              NPM_PURIFIER_TARGET_NPM_MODULES="$nativeNpmModules" \
+              NPM_PURIFIER_REGISTRY_RECORDER=${./registry-recorder.cjs} \
               ${hostNode}/bin/node ${./lock.js} "$root" "$lockfile"
           }
           withToolLockfile updateAndLock
