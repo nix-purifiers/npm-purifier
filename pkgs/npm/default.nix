@@ -24,13 +24,21 @@
   npm-purifier,
   implementationForSdk,
   implementationRuntimeMatches,
+  runtimeShell,
 }:
 let
   sdkImplementation = implementationForSdk nodejs;
   implementation =
     if
       npm-purifier.implementation.source == null
-      || !implementationRuntimeMatches { inherit coreutils python3 git; }
+      || !implementationRuntimeMatches {
+        inherit
+          coreutils
+          python3
+          git
+          runtimeShell
+          ;
+      }
     then
       sdkImplementation.withoutIdentity
     else
@@ -48,15 +56,14 @@ implementation.wrap (
     # clones git dependencies with git.
     runtimeInputs = [
       coreutils
-      nodejs
       git
     ];
     text = ''
-      npm=${lib.getExe' nodejs "npm"}
+      # npm-purifier-local-wrapper-v1
       purifier=${lib.getExe npm-purifier}
 
       if [ "''${NPM_PURIFIER:-1}" = 0 ]; then
-        exec "$npm" "$@"
+        exec ${python3}/bin/python ${../npm-purifier/local-runtime.py} exec -- "$@"
       fi
 
       lockfileArgs=()
@@ -92,7 +99,7 @@ implementation.wrap (
       fi
       if [ -z "$root" ]; then
         echo "npm-purifier: warning: no package-lock.json found; running npm impurely. Run \`npm-purifier lock\` to use Nix-resolved dependencies." >&2
-        exec "$npm" "$@"
+        exec ${python3}/bin/python ${../npm-purifier/local-runtime.py} exec -- "$@"
       fi
       selected="$(${python3}/bin/python ${implementation.tool} dispatch \
         --config ${implementation.manifest} \
@@ -117,6 +124,10 @@ implementation.wrap (
       done
 
       state="$root/.npm-purifier"
+      npm="" nativeNode="" runtimeFingerprint=""
+      runtimeEnvironment="$(${python3}/bin/python ${../npm-purifier/local-runtime.py} capture --state "$state" --shell ${runtimeShell})"
+      # shellcheck source=/dev/null
+      source "$runtimeEnvironment"
       (cd "$root" && "$purifier" inputs "''${lockfileArgs[@]}")
 
       # A bare old-npm install consumes the existing shrinkwrap offline.
@@ -147,7 +158,7 @@ implementation.wrap (
       esac
 
       if [ -z "$root" ]; then
-        exec "$npm" "$@"
+        exec ${python3}/bin/python ${../npm-purifier/local-runtime.py} exec -- "$@"
       fi
 
       state="$root/.npm-purifier"
@@ -160,14 +171,18 @@ implementation.wrap (
       if [ -f "$lockfile" ]; then
         lockfiles+=("$lockfile")
       fi
-      stamp="$( { printf '%s\n' ${nodejs} ${../..}; cat "''${lockfiles[@]}"; } | sha256sum | cut -d' ' -f1)"
+      stamp="$( { printf '%s\n' "$runtimeFingerprint" ${../..}; cat "''${lockfiles[@]}"; } | sha256sum | cut -d' ' -f1)"
       if [ "$(cat "$state/stamp" 2> /dev/null || true)" != "$stamp $lockfile" ]; then
         (cd "$root" && "$purifier" prefetch "''${lockfileArgs[@]}")
       fi
 
+      export npm_config_cache="$state/npm"
       # shellcheck disable=SC1091
       source "$state/dependencies/environment"
-      export npm_config_cache="$state/npm"
+      # Fetch-only local caches do not carry project input launcher bindings.
+      # Keep the views generated for this caller npm active for offline commands.
+      # shellcheck disable=SC1091
+      source "$state/input-environment"
       export npm_config_offline=true
       # The audit and the update check contact the registry even when
       # `offline` is set.
@@ -175,7 +190,10 @@ implementation.wrap (
       export npm_config_update_notifier=false
       # node-gyp takes the headers of this Node.js rather than downloading
       # them.
-      export npm_config_nodedir=${nodejs}
+      nodePrefix="$(dirname "$(dirname "$nativeNode")")"
+      if [ -z "''${npm_config_nodedir:-}" ] && [ -f "$nodePrefix/include/node/node.h" ]; then
+        export npm_config_nodedir="$nodePrefix"
+      fi
 
       log="$(mktemp)"
       trap 'rm -f "$log"' EXIT

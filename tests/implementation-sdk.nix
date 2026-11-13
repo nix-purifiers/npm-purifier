@@ -96,17 +96,25 @@ assert builtins.all (
   )).success
 ) invalid;
 assert !(builtins.tryEval ((scope.npm.override { nodejs = node; }).drvPath)).success;
-pkgs.runCommand "npm-implementation-sdk-recipe" { nativeBuildInputs = [ pkgs.python3 ]; } ''
-  python - ${command}/share/purifier/implementation.json ${native}/share/purifier/implementation.json <<'PY'
-  import json,sys
-  manifests = [json.load(open(path)) for path in sys.argv[1:]]
-  assert manifests[0] == manifests[1]
-  assert manifests[0]['configuration'] == json.loads('${builtins.toJSON expected}')
-  PY
-  mkdir work
-  cd work
-  # No lock means the configured native tool remains an ordinary impure npm.
-  ${native}/bin/npm --version > version
-  test -s version
-  cp version "$out"
-''
+pkgs.runCommand "npm-implementation-sdk-recipe"
+  {
+    nativeBuildInputs = [
+      pkgs.python3
+      pkgs.nodejs
+    ];
+  }
+  ''
+    python - ${command}/share/purifier/implementation.json ${native}/share/purifier/implementation.json <<'PY'
+    import json,sys
+    manifests = [json.load(open(path)) for path in sys.argv[1:]]
+    assert manifests[0] == manifests[1]
+    assert manifests[0]['configuration'] == json.loads('${builtins.toJSON expected}')
+    PY
+    mkdir work
+    cd work
+    # Interactive execution uses the caller runtime; the recorded immutable SDK
+    # recipe remains available separately for pure builders.
+    ${native}/bin/npm --version > version
+    test "$(cat version)" = "$(${pkgs.nodejs}/bin/npm --version)"
+    cp version "$out"
+  ''

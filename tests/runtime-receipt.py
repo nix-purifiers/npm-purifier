@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import shutil
 
 
 parser = argparse.ArgumentParser(description=__doc__)
@@ -53,14 +54,22 @@ try:
         tools_attribute = ('.#toolchain' if name.startswith('real-') or name in ('webjar', 'npm-projection')
                            else '.#checks.' + system + '.' + name + '-tools')
         tools = Path(output('nix', 'build', '--no-link', '--print-out-paths', tools_attribute))
-        native_env = dict(os.environ, NPM_PURIFIER='0')
+        native_sdk = tools / 'native-runtime'
+        prefixes = [str(tools / 'bin')] + ([str(native_sdk / 'bin')] if native_sdk.exists() else [])
+        native_env = dict(os.environ, NPM_PURIFIER='0', PATH=os.pathsep.join(prefixes + [os.environ['PATH']]))
+        node = shutil.which('node', path=native_env['PATH'])
+        assert node, 'native evidence requires an existing caller Node'
+        if tools_attribute == '.#toolchain':
+            assert not (tools / 'bin/node').exists(), 'default commands must preserve the caller runtime'
         result['sdk'] = {
+            'role': 'caller runtime for the native probe; pure builder inputs are recorded separately in derivation',
+            'selection': 'explicit test SDK' if native_sdk.exists() else 'existing caller PATH',
             'toolchainAttribute': tools_attribute,
             'toolchainPath': str(tools),
-            'nodeExecutable': str((tools / 'bin/node').resolve()),
-            'nodeProcessExecPath': output(str(tools / 'bin/node'), '-p', 'process.execPath', env=native_env),
+            'nodeExecutable': str(Path(node).resolve()),
+            'nodeProcessExecPath': output(node, '-p', 'process.execPath', env=native_env),
             'npmWrapper': str((tools / 'bin/npm').resolve()),
-            'nodeVersion': output(str(tools / 'bin/node'), '--version', env=native_env),
+            'nodeVersion': output(node, '--version', env=native_env),
             'npmVersion': output(str(tools / 'bin/npm'), '--version', env=native_env),
         }
         receipt['checks'].append(result)

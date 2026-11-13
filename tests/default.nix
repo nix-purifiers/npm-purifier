@@ -132,6 +132,38 @@ let
       throw "npm-purifier check ${name}: ${message}";
 in
 {
+  native-input-bindings =
+    let
+      caller = import ./node-fixture.nix {
+        inherit pkgs;
+        version = "24.22.2";
+      };
+      legacy = import ./node-fixture.nix {
+        inherit pkgs;
+        version = "12.22.12";
+      };
+    in
+    pkgs.runCommand "native-input-bindings" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+      python ${./npm-bindings-runtime.py} ${../pkgs/npm-purifier/npm-bindings.cjs} ${pkgs.nodejs} ${caller} ${lib.optionalString pkgs.stdenv.hostPlatform.isLinux (toString legacy)}
+      touch $out
+    '';
+
+  local-runtime =
+    pkgs.runCommand "local-runtime"
+      {
+        nativeBuildInputs = [
+          pkgs.nodejs
+          pkgs.python3
+        ];
+      }
+      ''
+        python ${./local-runtime.py} ${pkgs.nodejs} \
+          ${withOverlay.npm-purifier.npm-purifier}/bin/npm-purifier \
+          ${withOverlay.npm-purifier.npm}/bin/npm \
+          ${../pkgs/npm-purifier/local-runtime.py} ${pkgs.runtimeShell}
+        touch $out
+      '';
+
   implementation-context = import ./implementation-context.nix {
     inherit pkgs purifier npm-purifier;
   };
@@ -191,6 +223,7 @@ in
       '';
   current-node-tools = pkgs.buildEnv {
     name = "npm-current-node-tools";
+    postBuild = ''ln -s ${pkgs.nodejs} "$out/native-runtime"'';
     paths = [
       (lib.lowPrio pkgs.nodejs)
       withOverlay.npm-purifier.npm
@@ -557,12 +590,41 @@ in
     pkgs.runCommand "lock-run-units"
       {
         nativeBuildInputs = [ pkgs.nodejs ];
+        NPM_PURIFIER_NPM = "${pkgs.nodejs}/bin/npm";
         NPM_PURIFIER_NPM_MODULES = "${pkgs.nodejs}/lib/node_modules/npm/node_modules";
       }
       ''
         cp ${../pkgs/npm-purifier/lock.js} lock.js
         cp ${../pkgs/npm-purifier/lock.test.js} lock.test.js
         node --test lock.test.js
+        touch $out
+      '';
+
+  tarball-index-cache =
+    pkgs.runCommand "tarball-index-cache"
+      {
+        nativeBuildInputs = [
+          pkgs.nodejs
+          pkgs.python3
+        ];
+        NPM_PURIFIER_NPM_MODULES = "${pkgs.nodejs}/lib/node_modules/npm/node_modules";
+      }
+      ''
+        python ${./tarball-index.py} ${../pkgs/build-npm-project/seed-tarball-index.py}
+        touch $out
+      '';
+
+  registry-metadata-cache =
+    pkgs.runCommand "registry-metadata-cache"
+      {
+        nativeBuildInputs = [
+          pkgs.nodejs
+          pkgs.python3
+        ];
+        NPM_PURIFIER_NPM_MODULES = "${pkgs.nodejs}/lib/node_modules/npm/node_modules";
+      }
+      ''
+        python ${./registry-metadata.py} ${../pkgs/build-npm-project/seed-tarball-index.py} ${../pkgs/build-npm-project/registry-metadata.cjs}
         touch $out
       '';
 

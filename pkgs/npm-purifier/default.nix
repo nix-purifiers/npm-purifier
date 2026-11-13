@@ -42,6 +42,7 @@
   stdenv,
   implementationForSdk,
   implementationRuntimeMatches,
+  runtimeShell,
 }:
 let
   sdkImplementation = implementationForSdk nodejs;
@@ -55,6 +56,7 @@ let
           git
           nix-prefetch-git
           stdenv
+          runtimeShell
           ;
       }
     then
@@ -67,15 +69,12 @@ implementation.wrap (
     name = "npm-purifier";
     runtimeInputs = [
       coreutils
-      nodejs
-      python3
       git
       nix-prefetch-git
     ];
     text = ''
       originalArgs=("$@")
       implementationRelock=false
-      npm=${lib.getExe' nodejs "npm"}
       flake=${../..}
       system=${stdenv.hostPlatform.system}
 
@@ -206,8 +205,15 @@ implementation.wrap (
         exec ${python3}/bin/python ${implementation.tool} current \
           --config ${implementation.manifest} --lockfile "$lockfile"
       fi
-      npmMajor="$($npm --version | cut -d. -f1)"
-      if [ "$npmMajor" -lt 5 ]; then nativeLock="$root/npm-shrinkwrap.json"; fi
+      npm="" runtimeFingerprint=""
+      nativeNpmModules=${nodejs}/lib/node_modules/npm/node_modules
+      if [ "$implementationRelock" = false ]; then
+        runtimeEnvironment="$(${python3}/bin/python ${./local-runtime.py} capture --state "$state" --shell ${runtimeShell})"
+        # shellcheck source=/dev/null
+        source "$runtimeEnvironment"
+        npmMajor="$($npm --version | cut -d. -f1)"
+        if [ "$npmMajor" -lt 5 ]; then nativeLock="$root/npm-shrinkwrap.json"; fi
+      fi
 
       # The build of the project, as pkgs/npm-purifier/project.nix makes it.
       project="
@@ -237,6 +243,18 @@ implementation.wrap (
               path = builtins.getEnv \"NPM_PURIFIER_TOOL_LOCKFILE\";
             in
             if path == \"\" then null else /. + path;
+        })"
+      # Local adoption fetches dependency data without realizing a project SDK.
+      # Dispatch above has already selected the locked implementation.
+      localCache="
+        (let f = builtins.getFlake \"path:$flake\";
+        in import $flake/pkgs/npm-purifier/local-cache.nix {
+          inherit (f) lib;
+          pkgs = import f.inputs.nixpkgs { system = \"$system\"; };
+          packageLock = /. + builtins.getEnv \"NPM_PURIFIER_PACKAGE_LOCK\";
+          lockFile = /. + builtins.getEnv \"NPM_PURIFIER_LOCKFILE\";
+          toolLockFile = let path = builtins.getEnv \"NPM_PURIFIER_TOOL_LOCKFILE\";
+            in if path == \"\" then null else /. + path;
         })"
       export NPM_PURIFIER_PACKAGE_LOCK="$nativeLock"
       if [ "$implementationRelock" = true ]; then
@@ -285,7 +303,7 @@ implementation.wrap (
       # Nix cannot catch a JSON parse error, so the commands that evaluate
       # the build check the lockfiles first.
       checkJson() {
-        if [ -f "$1" ] && ! node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$1" 2> /dev/null; then
+        if [ -f "$1" ] && ! ${hostNode}/bin/node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$1" 2> /dev/null; then
           echo "npm-purifier: $1 is not valid JSON; $2" >&2
           exit 1
         fi
@@ -299,9 +317,9 @@ implementation.wrap (
       if [ "$command" = lock ] || [ "$command" = update ] || [ "$command" = inputs ] || [ "$command" = prefetch ]; then
         refreshArgs=()
         if [ "$command" = update ]; then refreshArgs=(--refresh); fi
-        python ${./npm-inputs.py} ${purifier.projectInputsTool} \
+        ${python3}/bin/python ${./npm-inputs.py} ${purifier.projectInputsTool} \
           "$lockfile" "$state" ${./npm-bindings.cjs} \
-          ${nodejs}/lib/node_modules/npm/node_modules "''${inputArgs[@]}" "''${refreshArgs[@]}"
+          "$nativeNpmModules" "''${inputArgs[@]}" "''${refreshArgs[@]}"
         # shellcheck disable=SC1091
         source "$state/input-environment"
       fi
@@ -342,7 +360,7 @@ implementation.wrap (
           checkLockfiles
           echo "npm-purifier: building the dependencies of $root" >&2
           mkdir -p "$state"
-          nix build --impure --out-link "$state/dependencies" --expr "$project.interactive"
+          nix build --impure --out-link "$state/dependencies" --expr "$localCache"
           # npm writes index entries, logs and packed tarballs into its cache,
           # so the cache is a writable tree of links into the store.
           rm -rf "$state/npm"
@@ -358,15 +376,15 @@ implementation.wrap (
           if [ -f "$lockfile" ]; then
             lockfiles+=("$lockfile")
           fi
-          stamp="$( { printf '%s\n' ${nodejs} ${../..}; cat "''${lockfiles[@]}"; } | sha256sum | cut -d' ' -f1)"
+          stamp="$( { printf '%s\n' "$runtimeFingerprint" ${../..}; cat "''${lockfiles[@]}"; } | sha256sum | cut -d' ' -f1)"
           printf '%s %s\n' "$stamp" "$lockfile" > "$state/stamp"
           echo "npm-purifier: npm runs offline in $root through the npm-purifier npm wrapper" >&2
           ;;
         publish)
           checkLockfiles
-          name="$(node -p 'require("./package.json").name')"
+          name="$(${hostNode}/bin/node -p 'require("./package.json").name')"
           echo "npm-purifier: building $name" >&2
-          if node -e 'const fs=require("fs");const p=process.argv[1];process.exit(fs.existsSync(p) && (JSON.parse(fs.readFileSync(p)).projectInputs || []).length ? 0 : 1)' "$lockfile"; then
+          if ${hostNode}/bin/node -e 'const fs=require("fs");const p=process.argv[1];process.exit(fs.existsSync(p) && (JSON.parse(fs.readFileSync(p)).projectInputs || []).length ? 0 : 1)' "$lockfile"; then
             projection="$project.packages.\''${builtins.getEnv \"NPM_PURIFIER_PACKAGE\"}.projections.npm"
             repository="$(NPM_PURIFIER_PACKAGE="$name" nix build --impure --no-link --print-out-paths --expr "$projection")"
             catalog="$(NPM_PURIFIER_PACKAGE="$name" nix eval --impure --raw --expr "$projection.catalog")"

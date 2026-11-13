@@ -117,6 +117,12 @@ def main():
                 sdk_outputs[str(sdk_root)] = {'physicalNarHash': actual_hash,
                     'registered': registered[str(sdk_root)],
                     'executableSha256': hashlib.sha256(executable.read_bytes()).hexdigest()}
+            if name == 'A-default':
+                # The old immutable implementation establishes this fixture's
+                # SDK. Supply it explicitly as the caller for subsequent local
+                # commands; implementation selection must not replace PATH.
+                assert (sdk_root / 'bin/npm').is_file()
+                environment['PATH'] = str(sdk_root / 'bin') + os.pathsep + os.environ['PATH']
             observed.append({'caller': name, 'origin': origin,
                              'npm': run([native / 'bin/npm', '--version'], project).stdout.strip()})
         # Dependency updates cannot turn the configured implementation into a
@@ -181,7 +187,8 @@ def main():
                    'dependencyUpdateRetainsConfiguration': True, 'explicitSourceUpdateRetainsConfiguration': True,
                    'wrongSdkBuilderRejected': True, 'restoredLockBytes': True,
                    'customSdkLegacyNativeBuildTest': True, 'customSdkCannotCreatePortablePin': True,
-                   'customSdkAppliedThroughGlobalOverlay': True,
+                   'customSdkOverlayIdentityUnpinned': True,
+                   'customSdkPreservesCallerRuntime': True,
                    'bootstrapSha256': hashlib.sha256(Path(args.bootstrap).read_bytes()).hexdigest(), 'commands': commands}
         Path(args.output).write_text(json.dumps(receipt, indent=2) + '\n')
         print('Configured SDK lifecycle passed:', sdk_version)

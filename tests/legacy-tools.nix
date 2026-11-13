@@ -25,4 +25,5 @@ pkgs.buildEnv {
     npm
     command
   ];
+  postBuild = ''ln -s ${nodejs} "$out/native-runtime"'';
 }

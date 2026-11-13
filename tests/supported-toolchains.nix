@@ -91,6 +91,7 @@ let
           npm
           command
         ];
+        postBuild = ''ln -s ${node} "$out/native-runtime"'';
       };
     };
 in

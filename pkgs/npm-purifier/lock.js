@@ -256,7 +256,18 @@ const preparationLock = (dir) => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "npm-purifier-lock-"));
   try {
     fs.cpSync(dir, tmp, { recursive: true, filter: (src) => path.basename(src) !== ".git" });
-    fs.chmodSync(tmp, 0o755);
+    // Store checkouts carry read-only modes into cpSync. npm needs a mutable
+    // working tree, and cleanup must be able to unlink nested contents.
+    // Do not follow symlinks back into the original checkout.
+    const writable = (file) => {
+      const stat = fs.lstatSync(file);
+      if (stat.isSymbolicLink()) return;
+      fs.chmodSync(file, stat.mode | (stat.isDirectory() ? 0o700 : 0o200));
+      if (stat.isDirectory()) {
+        for (const name of fs.readdirSync(file)) writable(path.join(file, name));
+      }
+    };
+    writable(tmp);
     execFileSync(
       npm,
       ["install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund"],
@@ -480,6 +491,7 @@ module.exports = {
   resolveSubmoduleUrl,
   submodulesOf,
   needsPreparation,
+  preparationLock,
   incompleteEntries,
   completeLock,
   packageEntries,
