@@ -1,0 +1,10 @@
+{
+  "name": "coordinator",
+  "private": true,
+  "workspaces": [
+    "packages/@example/*"
+  ],
+  "dependencies": {
+    "@example/shared": "file:../@example/shared"
+  }
+}

@@ -168,6 +168,101 @@ in
       )
       "authored nested module fixtures must survive while package install trees are excluded; custom filters must remain authoritative";
 
+  nameless-local-packages =
+    let
+      fixture = ./fixtures/nameless-local;
+      lock = npm-purifier.readLock {
+        src = fixture;
+        projectDir = "app";
+      };
+      project = buildNpmProject {
+        src = fixture;
+        projectDir = "app";
+      };
+      source = project.tests.src;
+      custom = buildNpmProject {
+        src = fixture;
+        projectDir = "app";
+        srcFilter = _: _: true;
+      };
+      externalSource = pkgs.runCommand "unbuildable-local-source" { } "exit 1";
+      nativeLock = lib.importJSON (fixture + "/app/package-lock.json");
+      lockWith =
+        packages:
+        builtins.toFile "local-package-lock.json" (builtins.toJSON (nativeLock // { inherit packages; }));
+      collision = npm-purifier.readLock {
+        src = fixture;
+        projectDir = "app";
+        packageLock = lockWith (
+          nativeLock.packages
+          // {
+            "../@example/shared" = nativeLock.packages."../@example/shared" // {
+              name = "@example/worker";
+            };
+          }
+        );
+      };
+      escaped = npm-purifier.readLock {
+        src = fixture;
+        projectDir = "app";
+        packageLock = lockWith {
+          "../../outside" = {
+            version = "1.0.0";
+          };
+        };
+      };
+      namedExternal = npm-purifier.readLock {
+        src = externalSource;
+        projectDir = "app";
+        packageLock = lockWith (
+          nativeLock.packages
+          // {
+            "packages/@example/worker" = nativeLock.packages."packages/@example/worker" // {
+              name = "@example/worker";
+            };
+            "../@example/shared" = nativeLock.packages."../@example/shared" // {
+              name = "@example/shared";
+            };
+          }
+        );
+        lockFile = ./locks/absent-npm-purifier.lock.json;
+      };
+      external = npm-purifier.readLock {
+        src = externalSource;
+        projectDir = "app";
+        packageLock = fixture + "/app/package-lock.json";
+        lockFile = ./locks/absent-npm-purifier.lock.json;
+      };
+    in
+    evalCheck "nameless-local-packages"
+      (
+        lock.problems == [ ]
+        &&
+          builtins.attrNames lock.outputs == [
+            "@example/shared"
+            "@example/worker"
+          ]
+        && lock.outputs."@example/worker".dir == "packages/@example/worker"
+        && lock.outputs."@example/worker".version == "1.2.3"
+        && lock.outputs."@example/shared".dir == "../@example/shared"
+        && lock.outputs."@example/shared".version == "4.5.6"
+        && !(builtins.pathExists (source + "/app/packages/@example/worker/node_modules"))
+        && !(builtins.pathExists (source + "/@example/shared/node_modules"))
+        &&
+          builtins.readFile (source + "/app/test/fixtures/node_modules/example/index.js")
+          == "authored fixture\n"
+        && builtins.pathExists (
+          custom.tests.src + "/app/packages/@example/worker/node_modules/generated/index.js"
+        )
+        && builtins.pathExists (custom.tests.src + "/@example/shared/node_modules/generated/index.js")
+        && refused collision
+        && refused escaped
+        && namedExternal.problems == [ ]
+        && namedExternal.outputs == lock.outputs
+        && refused external
+      )
+      "nameless workspace/local packages must retain authored identities and filter generated trees without realizing derivation sources";
+
   native-input-bindings =
     let
       caller = import ./node-fixture.nix {
