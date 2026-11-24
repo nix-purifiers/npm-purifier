@@ -531,9 +531,17 @@ let
   own = lib.filterAttrs (
     key: entry: entry ? name && !(key == "" && entry ? workspaces && binOf entry == { })
   ) namedLocal;
+  # Refuse ambiguities introduced by recovering an omitted identity. Existing
+  # fully named locks can intentionally use the same root/workspace name;
+  # preserve their established output selection.
+  recoveredNames = map (key: namedLocal.${key}.name) (
+    builtins.filter (key: !(localEntries.${key} ? name) && namedLocal.${key} ? name) (
+      builtins.attrNames namedLocal
+    )
+  );
   duplicateNames = lib.filter (
     name: builtins.length (lib.filter (entry: entry.name == name) (builtins.attrValues own)) > 1
-  ) (lib.unique (map (entry: entry.name) (builtins.attrValues own)));
+  ) (lib.unique recoveredNames);
 
 in
 {
@@ -615,7 +623,7 @@ in
     ++ builtins.attrValues localPackages
     ++ map (
       name:
-      problemOf "multiple local packages claim the name ${name}; give each authored package a distinct name and regenerate the lockfile."
+      problemOf "recovered local package name ${name} conflicts with another package; give each authored package a distinct name and regenerate the lockfile."
     ) duplicateNames
   );
 }

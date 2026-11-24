@@ -202,6 +202,27 @@ in
           }
         );
       };
+      namedCollision = npm-purifier.readLock {
+        src = fixture;
+        projectDir = "app";
+        packageLock = lockWith {
+          "" = {
+            name = "@example/worker";
+            version = "1.2.3";
+            workspaces = [ "packages/*" ];
+            bin = {
+              worker = "bundle.js";
+            };
+          };
+          "packages/@example/worker" = {
+            name = "@example/worker";
+            version = "1.2.3";
+            bin = {
+              worker = "cli.js";
+            };
+          };
+        };
+      };
       escaped = npm-purifier.readLock {
         src = fixture;
         projectDir = "app";
@@ -256,6 +277,9 @@ in
         )
         && builtins.pathExists (custom.tests.src + "/@example/shared/node_modules/generated/index.js")
         && refused collision
+        && namedCollision.problems == [ ]
+        && namedCollision.outputs."@example/worker".dir == ""
+        && namedCollision.outputs."@example/worker".bin.worker == "bundle.js"
         && refused escaped
         && namedExternal.problems == [ ]
         && namedExternal.outputs == lock.outputs
