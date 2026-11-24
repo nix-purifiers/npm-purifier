@@ -132,6 +132,42 @@ let
       throw "npm-purifier check ${name}: ${message}";
 in
 {
+  source-fixtures =
+    let
+      fixture = ./fixtures/source-filter;
+      project = buildNpmProject { src = fixture; };
+      source = project.tests.src;
+      nested = buildNpmProject {
+        src = ./fixtures;
+        projectDir = "./source-filter/";
+      };
+      nestedSource = nested.tests.src + "/source-filter";
+      custom = buildNpmProject {
+        src = fixture;
+        srcFilter = _: _: true;
+      };
+      retained =
+        source:
+        builtins.readFile (source + "/test/fixtures/node_modules/example/index.js")
+        == "module.exports = 42;\n"
+        &&
+          builtins.readFile (source + "/test/fixtures/node_modules/example/node_modules/inner/index.js")
+          == "module.exports = 43;\n"
+        &&
+          builtins.readFile (source + "/shared/test/node_modules/example/index.js")
+          == "module.exports = 44;\n"
+        && !(builtins.pathExists (source + "/node_modules"))
+        && !(builtins.pathExists (source + "/packages/app/node_modules"))
+        && !(builtins.pathExists (source + "/shared/node_modules"));
+    in
+    evalCheck "source-fixtures"
+      (
+        retained source
+        && retained nestedSource
+        && builtins.pathExists (custom.tests.src + "/node_modules/generated/index.js")
+      )
+      "authored nested module fixtures must survive while package install trees are excluded; custom filters must remain authoritative";
+
   native-input-bindings =
     let
       caller = import ./node-fixture.nix {

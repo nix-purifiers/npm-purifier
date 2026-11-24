@@ -252,19 +252,23 @@ let
     inherit (lib) purifier;
   };
 
+  # Only package install locations are generated dependency trees. Nested
+  # node_modules directories elsewhere can be authored test fixtures.
+  installedModuleDirs = lib.unique (
+    [ "node_modules" ]
+    ++ map (dir: lib.optionalString (dir != "") "${dir}/" + "node_modules") (
+      [ (inSrc "") ] ++ map (p: inSrc p.dir) (builtins.attrValues lock.outputs)
+    )
+  );
+
   defaultSrcFilter =
     path: type:
     let
       name = baseNameOf path;
+      relative = lib.removePrefix "${toString src}/" (toString path);
     in
     !(
-      (
-        type == "directory"
-        && builtins.elem name [
-          "node_modules"
-          ".npm-purifier"
-        ]
-      )
+      (type == "directory" && (builtins.elem relative installedModuleDirs || name == ".npm-purifier"))
       || name == ".git"
       || lib.hasPrefix "result" name
     );
