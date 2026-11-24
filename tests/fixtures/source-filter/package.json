@@ -1,0 +1,10 @@
+{
+  "name": "source-filter",
+  "version": "1.0.0",
+  "workspaces": [
+    "packages/app"
+  ],
+  "dependencies": {
+    "local-fixture": "file:shared"
+  }
+}
