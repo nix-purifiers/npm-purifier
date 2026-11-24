@@ -257,7 +257,7 @@ let
   installedModuleDirs = lib.unique (
     [ "node_modules" ]
     ++ map (dir: lib.optionalString (dir != "") "${dir}/" + "node_modules") (
-      [ (inSrc "") ] ++ map (p: inSrc p.dir) (builtins.attrValues lock.outputs)
+      [ (inSrc "") ] ++ map inSrc lock.packageDirs
     )
   );
 

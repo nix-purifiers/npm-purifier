@@ -232,6 +232,16 @@ in
           };
         };
       };
+      linkedManifest =
+        key:
+        npm-purifier.readLock {
+          src = fixture;
+          packageLock = lockWith {
+            ${key} = {
+              version = "1.0.0";
+            };
+          };
+        };
       namedExternal = npm-purifier.readLock {
         src = externalSource;
         projectDir = "app";
@@ -281,11 +291,34 @@ in
         && namedCollision.outputs."@example/worker".dir == ""
         && namedCollision.outputs."@example/worker".bin.worker == "bundle.js"
         && refused escaped
+        && refused (linkedManifest "manifest-link")
+        && refused (linkedManifest "directory-link")
         && namedExternal.problems == [ ]
         && namedExternal.outputs == lock.outputs
         && refused external
       )
       "nameless workspace/local packages must retain authored identities and filter generated trees without realizing derivation sources";
+
+  duplicate-package-install-roots =
+    let
+      fixture = ./fixtures/duplicate-package-names;
+      lock = npm-purifier.readLock { src = fixture; };
+      project = buildNpmProject { src = fixture; };
+      custom = buildNpmProject {
+        src = fixture;
+        srcFilter = _: _: true;
+      };
+    in
+    evalCheck "duplicate-package-install-roots" (
+      lock.problems == [ ]
+      && lock.outputs.same-name.dir == ""
+      && lock.outputs.same-name.bin.cli == "bundle.js"
+      && !(builtins.pathExists (project.tests.src + "/packages/cli/node_modules"))
+      &&
+        builtins.readFile (project.tests.src + "/test/fixtures/node_modules/example/index.js")
+        == "authored fixture\n"
+      && builtins.pathExists (custom.tests.src + "/packages/cli/node_modules/generated/index.js")
+    ) "every package install root must be filtered even when root/workspace output names coincide";
 
   native-input-bindings =
     let

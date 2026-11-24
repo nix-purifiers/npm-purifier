@@ -508,14 +508,35 @@ let
       ) [ ] (lib.splitString "/" (projectDir + "/" + key));
       insideSource = !(builtins.elem ".." components) && !lib.hasPrefix "/" projectDir;
       file = src + ("/" + lib.concatStringsSep "/" components + "/package.json");
+      # Source copies preserve symlinks. Do not recover metadata by following
+      # a link that can name bytes outside that declared source tree.
+      directory =
+        lib.foldl'
+          (
+            state: component:
+            let
+              children = if state.safe then builtins.readDir state.path else { };
+            in
+            {
+              safe = state.safe && (children.${component} or null) == "directory";
+              path = state.path + ("/" + component);
+            }
+          )
+          {
+            safe = true;
+            path = src;
+          }
+          components;
+      regularManifest =
+        directory.safe && ((builtins.readDir directory.path)."package.json" or null) == "regular";
       authored = lib.importJSON file;
     in
     if entry ? name || key == "" then
       { value = entry; }
     else if sourceIsDerivation || !insideSource then
       problemOf "local package ${key} has no name in ${toString packageLock}; record its authored package name in the external lockfile without realizing or reading outside src."
-    else if !(builtins.pathExists file) then
-      problemOf "local package ${key} has no name in ${toString packageLock} and no package.json at ${toString file}."
+    else if !regularManifest then
+      problemOf "local package ${key} has no name in ${toString packageLock} and no regular package.json within src at ${toString file}; record its authored name in the external lockfile."
     else if !(builtins.isString (authored.name or null)) || authored.name == "" then
       problemOf "local package ${key} has no package name in ${toString file}."
     else
@@ -603,6 +624,8 @@ in
         ) (installed completedPackages)
       )
   ) packageSets;
+  # Keep every install location, including packages that share an output name.
+  packageDirs = builtins.attrNames own;
   outputs = lib.listToAttrs (
     lib.mapAttrsToList (
       key: entry:
