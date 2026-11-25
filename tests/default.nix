@@ -158,15 +158,22 @@ in
           == "module.exports = 44;\n"
         && !(builtins.pathExists (source + "/node_modules"))
         && !(builtins.pathExists (source + "/packages/app/node_modules"))
-        && !(builtins.pathExists (source + "/shared/node_modules"));
+        && !(builtins.pathExists (source + "/shared/node_modules"))
+        && builtins.readFile (source + "/result.js") == "module.exports = 42;\n"
+        && builtins.readFile (source + "/src/results.json") == "{\"result\":42}\n"
+        && builtins.readFile (source + "/test/fixtures/results/expected.txt") == "authored result fixture\n"
+        && !(builtins.hasAttr "result" (builtins.readDir source))
+        && !(builtins.hasAttr "result-dev" (builtins.readDir source));
     in
     evalCheck "source-fixtures"
       (
         retained source
         && retained nestedSource
         && builtins.pathExists (custom.tests.src + "/node_modules/generated/index.js")
+        && builtins.hasAttr "result" (builtins.readDir custom.tests.src)
+        && builtins.hasAttr "result-dev" (builtins.readDir custom.tests.src)
       )
-      "authored nested module fixtures must survive while package install trees are excluded; custom filters must remain authoritative";
+      "authored fixtures must survive while generated module trees and Nix result symlinks are excluded; custom filters must remain authoritative";
 
   nameless-local-packages =
     let
