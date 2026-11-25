@@ -482,16 +482,88 @@ let
     in
     if builtins.isString bin then { ${lib.last (lib.splitString "/" entry.name)} = bin; } else bin;
 
-  # The project's own packages: the root, the workspaces and the local
-  # directories the project depends on. A root that declares workspaces
-  # and has no commands only coordinates the workspaces, and stays out.
-  own = lib.filterAttrs (
-    key: entry:
-    !isInstalled key
-    && !lib.hasPrefix "/" key
-    && entry ? name
-    && !(key == "" && entry ? workspaces && binOf entry == { })
+  # npm omits a local package's name when it agrees with the directory
+  # name. Read its authored manifest, rather than inventing an identity
+  # from the path (which also cannot distinguish scoped names or aliases).
+  # External locks can describe derivation sources without realizing them:
+  # those locks must retain the local names explicitly.
+  sourceIsDerivation = builtins.any (context: context ? outputs || context ? allOutputs) (
+    builtins.attrValues (builtins.getContext (toString src))
+  );
+  localEntries = lib.filterAttrs (
+    key: entry: !isInstalled key && !lib.hasPrefix "/" key && !(entry.link or false)
   ) packages;
+  localPackages = lib.mapAttrs (
+    key: entry:
+    let
+      # Normalize relative components before checking the source boundary.
+      components = lib.foldl' (
+        parts: part:
+        if part == "" || part == "." then
+          parts
+        else if part == ".." && parts != [ ] && lib.last parts != ".." then
+          lib.init parts
+        else
+          parts ++ [ part ]
+      ) [ ] (lib.splitString "/" (projectDir + "/" + key));
+      insideSource = !(builtins.elem ".." components) && !lib.hasPrefix "/" projectDir;
+      file = src + ("/" + lib.concatStringsSep "/" components + "/package.json");
+      # Source copies preserve symlinks. Do not recover metadata by following
+      # a link that can name bytes outside that declared source tree.
+      directory =
+        lib.foldl'
+          (
+            state: component:
+            let
+              children = if state.safe then builtins.readDir state.path else { };
+            in
+            {
+              safe = state.safe && (children.${component} or null) == "directory";
+              path = state.path + ("/" + component);
+            }
+          )
+          {
+            safe = true;
+            path = src;
+          }
+          components;
+      regularManifest =
+        directory.safe && ((builtins.readDir directory.path)."package.json" or null) == "regular";
+      authored = lib.importJSON file;
+    in
+    if entry ? name || key == "" then
+      { value = entry; }
+    else if sourceIsDerivation || !insideSource then
+      problemOf "local package ${key} has no name in ${toString packageLock}; record its authored package name in the external lockfile without realizing or reading outside src."
+    else if !regularManifest then
+      problemOf "local package ${key} has no name in ${toString packageLock} and no regular package.json within src at ${toString file}; record its authored name in the external lockfile."
+    else if !(builtins.isString (authored.name or null)) || authored.name == "" then
+      problemOf "local package ${key} has no package name in ${toString file}."
+    else
+      {
+        value = entry // {
+          inherit (authored) name;
+        };
+      }
+  ) localEntries;
+  namedLocal = lib.mapAttrs (_: result: result.value) (
+    lib.filterAttrs (_: result: result ? value) localPackages
+  );
+  own = lib.filterAttrs (
+    key: entry: entry ? name && !(key == "" && entry ? workspaces && binOf entry == { })
+  ) namedLocal;
+  # Refuse ambiguities introduced by recovering an omitted identity. Existing
+  # fully named locks can intentionally use the same root/workspace name;
+  # preserve their established output selection.
+  recoveredNames = map (key: namedLocal.${key}.name) (
+    builtins.filter (key: !(localEntries.${key} ? name) && namedLocal.${key} ? name) (
+      builtins.attrNames namedLocal
+    )
+  );
+  duplicateNames = lib.filter (
+    name: builtins.length (lib.filter (entry: entry.name == name) (builtins.attrValues own)) > 1
+  ) (lib.unique recoveredNames);
+
 in
 {
   purifier = "npm-purifier";
@@ -552,6 +624,8 @@ in
         ) (installed completedPackages)
       )
   ) packageSets;
+  # Keep every install location, including packages that share an output name.
+  packageDirs = builtins.attrNames own;
   outputs = lib.listToAttrs (
     lib.mapAttrsToList (
       key: entry:
@@ -569,5 +643,10 @@ in
     ++ tarballs
     ++ gitDependencies
     ++ missingPublished
+    ++ builtins.attrValues localPackages
+    ++ map (
+      name:
+      problemOf "recovered local package name ${name} conflicts with another package; give each authored package a distinct name and regenerate the lockfile."
+    ) duplicateNames
   );
 }
