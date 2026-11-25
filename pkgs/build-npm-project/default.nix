@@ -270,7 +270,7 @@ let
     !(
       (type == "directory" && (builtins.elem relative installedModuleDirs || name == ".npm-purifier"))
       || name == ".git"
-      || lib.hasPrefix "result" name
+      || (type == "symlink" && lib.hasPrefix "result" name)
     );
 
   filteredSrc = builtins.path {
